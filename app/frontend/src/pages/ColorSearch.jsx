@@ -125,64 +125,134 @@ function getMaterialRole(r) {
 }
 
 function MLSuggestionCard({ s, rank }) {
-  const colorantCount = s.n_colorants;
+  const nColorants = s.n_colorants;
   const typeLabel =
-    colorantCount === 1 ? "1 colorant" :
-    colorantCount === 2 ? "2 colorants" : "3 colorants";
+    nColorants === 1 ? "1 colorant" :
+    nColorants === 2 ? "2 colorants" : "3 colorants";
   const typeColor =
-    colorantCount === 1 ? "bg-gray-100 text-gray-600" :
-    colorantCount === 2 ? "bg-violet-100 text-violet-700" : "bg-fuchsia-100 text-fuchsia-700";
+    nColorants === 1 ? "bg-gray-100 text-gray-600" :
+    nColorants === 2 ? "bg-violet-100 text-violet-700" : "bg-fuchsia-100 text-fuchsia-700";
+
+  const pigs = s.pigment_system || [];
+  const opac = s.opacifier || [];
+  const carr = s.carrier || [];
+
+  const renderRow = (c, i) => (
+    <tr key={i} className="border-t border-gray-100">
+      <td className="py-1 pr-2">
+        <div className="flex items-center gap-1 flex-wrap">
+          {c.full_tone_L != null && (
+            <LabSwatch L={c.full_tone_L} a={c.full_tone_a || 0} b={c.full_tone_b || 0} size="w-4 h-4" />
+          )}
+          <span className="font-medium text-gray-800">{c.name}</span>
+          {c.ci_name && <span className="text-gray-400">· {c.ci_name}</span>}
+        </div>
+        {/* Explainability row */}
+        {c.n_recipes != null && (
+          <div className="text-[10px] text-gray-400 mt-0.5 leading-tight">
+            seen in {c.n_recipes} recipes
+            {c.conc_range && ` · typical range ${c.conc_range}`}
+          </div>
+        )}
+        {/* Alerts */}
+        {c.polymer_note && (
+          <div className="text-[10px] text-amber-600 mt-0.5 italic">{c.polymer_note}</div>
+        )}
+        {c.constraint_note && (
+          <div className="text-[10px] text-red-500 mt-0.5">{c.constraint_note}</div>
+        )}
+      </td>
+      <td className="py-1 text-right align-top font-semibold text-indigo-700">{c.pct?.toFixed(2)}%</td>
+      {c.role === "colorant" && (
+        <td className="py-1 text-right align-top text-gray-500">{c.confidence_pct}%</td>
+      )}
+      {c.role !== "colorant" && <td className="py-1 text-right align-top text-gray-300">—</td>}
+    </tr>
+  );
 
   return (
-    <div className="border rounded-lg p-3 bg-white shadow-sm text-sm flex flex-col gap-2">
+    <div className="border rounded-lg p-3 bg-white shadow-sm text-xs flex flex-col gap-2">
+
+      {/* Header: rank, ΔE, type, predicted swatch */}
       <div className="flex items-center gap-2 flex-wrap">
         {rank != null && (
-          <span className="text-xs font-bold text-gray-400 w-5 text-center">#{rank + 1}</span>
+          <span className="font-bold text-gray-400 w-5 text-center">#{rank + 1}</span>
         )}
-        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeColor}`}>{typeLabel}</span>
-        <span className="ml-auto text-xs text-gray-400">
-          avg confidence {s.avg_confidence_pct}%
-        </span>
+        <DeltaBadge de={s.delta_e} />
+        <span className={`font-medium px-2 py-0.5 rounded-full ${typeColor}`}>{typeLabel}</span>
+        {s.predicted_lab && (
+          <LabSwatch
+            L={s.predicted_lab.L} a={s.predicted_lab.a} b={s.predicted_lab.b}
+            size="w-5 h-5"
+          />
+        )}
+        {!s.all_constraints_ok && (
+          <span className="ml-auto font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+            ⚠ constraint conflict
+          </span>
+        )}
       </div>
 
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-gray-400 border-b">
-            <th className="text-left font-medium pb-0.5">Component</th>
-            <th className="text-left font-medium pb-0.5">Role</th>
-            <th className="text-right font-medium pb-0.5">%</th>
-            <th className="text-right font-medium pb-0.5">Conf.</th>
-          </tr>
-        </thead>
-        <tbody>
-          {s.components.map((c, i) => (
-            <tr key={i} className="border-t border-gray-100">
-              <td className="py-0.5 pr-2 font-medium text-gray-800">
-                <div className="flex items-center gap-1">
-                  {c.full_tone_L != null && (
-                    <LabSwatch L={c.full_tone_L} a={c.full_tone_a || 0} b={c.full_tone_b || 0} size="w-4 h-4" />
-                  )}
-                  {c.name}
-                  {c.ci_name && <span className="text-gray-400 font-normal">· {c.ci_name}</span>}
-                </div>
-              </td>
-              <td className="py-0.5 pr-2">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                  c.role === "colorant" ? "bg-red-100 text-red-700" :
-                  c.role === "opacity" ? "bg-gray-100 text-gray-600" :
-                  "bg-blue-100 text-blue-700"
-                }`}>{c.role}</span>
-              </td>
-              <td className="py-0.5 text-right font-semibold text-indigo-700">
-                {c.pct?.toFixed(2)}%
-              </td>
-              <td className="py-0.5 text-right text-gray-500">
-                {c.role === "colorant" ? `${c.confidence_pct}%` : "—"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* Predicted LAB */}
+      {s.predicted_lab && (
+        <div className="text-gray-500 border-b pb-1">
+          K-M predicted &nbsp;
+          <span className="font-mono">
+            L={s.predicted_lab.L} a={s.predicted_lab.a} b={s.predicted_lab.b}
+          </span>
+          {s.delta_e != null && (
+            <span className="ml-2 text-gray-400">· ΔE={s.delta_e} vs target</span>
+          )}
+        </div>
+      )}
+
+      {/* Pigment system */}
+      {pigs.length > 0 && (
+        <>
+          <div className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">
+            Pigment System
+          </div>
+          <table className="w-full">
+            <thead>
+              <tr className="text-gray-400 border-b">
+                <th className="text-left font-medium pb-0.5">Colorant</th>
+                <th className="text-right font-medium pb-0.5">%</th>
+                <th className="text-right font-medium pb-0.5">Conf.</th>
+              </tr>
+            </thead>
+            <tbody>{pigs.map(renderRow)}</tbody>
+          </table>
+        </>
+      )}
+
+      {/* Opacifier */}
+      {opac.length > 0 && (
+        <>
+          <div className="font-semibold text-gray-500 uppercase tracking-wide text-[10px] mt-1">
+            Opacifier
+          </div>
+          <table className="w-full">
+            <tbody>{opac.map(renderRow)}</tbody>
+          </table>
+        </>
+      )}
+
+      {/* Carrier */}
+      {carr.length > 0 && (
+        <>
+          <div className="font-semibold text-gray-500 uppercase tracking-wide text-[10px] mt-1">
+            Carrier / Base
+          </div>
+          <table className="w-full">
+            <tbody>{carr.map(renderRow)}</tbody>
+          </table>
+        </>
+      )}
+
+      {/* Footer: avg confidence */}
+      <div className="text-gray-400 border-t pt-1">
+        Avg pigment confidence {s.avg_confidence_pct}%
+      </div>
     </div>
   );
 }
@@ -561,26 +631,16 @@ export default function ColorSearch() {
             <section>
               <h2 className="text-lg font-semibold mb-1">
                 ML Recipe Suggestions
-                <span className="ml-2 text-xs font-normal px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">
-                  Learned from {results.ml_status?.corpus_size || "?"} recipes ·{" "}
-                  {results.ml_status?.trainable_pigments || "?"} pigment models
-                </span>
               </h2>
               <p className="text-xs text-gray-500 mb-3">
-                RandomForest + GradientBoosting trained on historical recipe data.
-                Predictions interpolate across the colour space — not lookups.
-                "Confidence" is the model's probability that this pigment belongs in the recipe.
+                RandomForest classifiers predict <em>which</em> pigments belong; GradientBoosting
+                predicts their <em>concentration</em>. Constrained by your compliance / fastness /
+                heat filters. Predicted ΔE is computed via K-M on the suggested recipe.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {results.ml_suggestions.map((s, i) => (
                   <MLSuggestionCard key={i} s={s} rank={i} />
                 ))}
-              </div>
-            </section>
-          ) : results.ml_status?.status === "training" ? (
-            <section>
-              <div className="text-sm text-gray-400 italic border rounded-lg p-3 bg-gray-50">
-                ML model is still training in the background — refresh after a moment to see ML suggestions.
               </div>
             </section>
           ) : null}

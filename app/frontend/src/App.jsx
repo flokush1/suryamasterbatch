@@ -4,14 +4,12 @@ import Products from "./pages/Products";
 import ProductDetail from "./pages/ProductDetail";
 import PigmentLibrary from "./pages/PigmentLibrary";
 import LabData from "./pages/LabData";
-import Stocks from "./pages/Stocks";
 
 const navItems = [
   { to: "/", label: "Color Search" },
   { to: "/products", label: "Products" },
   { to: "/pigments", label: "Pigment Library" },
   { to: "/lab-data", label: "Lab Data" },
-  { to: "/stocks", label: "Stocks" },
 ];
 
 export default function App() {
@@ -49,7 +47,6 @@ export default function App() {
             <Route path="/products/:id" element={<ProductDetail />} />
             <Route path="/pigments" element={<PigmentLibrary />} />
             <Route path="/lab-data" element={<LabData />} />
-            <Route path="/stocks" element={<Stocks />} />
           </Routes>
         </main>
       </div>

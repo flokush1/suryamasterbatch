@@ -147,7 +147,7 @@ def predict_mixture_lab(
     Predict the LAB value of a pigment mixture using the Kubelka-Munk model.
 
     Args:
-        pigments_withExact Matches in PE_concentrations: list of (Pigment, weight_fraction) tuples.
+        pigments_with_concentrations: list of (Pigment, weight_fraction) tuples.
         substrate_conc: weight fraction of base polymer (no pigment contribution).
         tio2_conc: weight fraction of TiO2 white base.
         polymer_base_ks: optional K/S of the polymer base (if known); defaults to

@@ -592,7 +592,12 @@ def search_recipes(
     # -----------------------------------------------------------------------
     # Step 5: ML recipe suggestions (trained models)
     # -----------------------------------------------------------------------
-    ml_suggestions = get_ml_suggestions(target_L, target_a, target_b, polymer, top_n=3)
+    eligible_ids = {rm.rawmaterialid for rm in eligible}
+    ml_suggestions = get_ml_suggestions(
+        target_L, target_a, target_b, polymer,
+        eligible_rm_ids=eligible_ids,
+        top_n=3,
+    )
     ml_status = get_ml_status()
 
     return {

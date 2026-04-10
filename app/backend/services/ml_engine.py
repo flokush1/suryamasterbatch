@@ -98,7 +98,10 @@ class MLRecipeModel:
         self._pig_clf: Dict[str, object] = {}    # rm_id → RandomForestClassifier
         self._pig_reg: Dict[str, object] = {}    # rm_id → GradientBoostingRegressor
         self._tio2_reg = None                    # L* → TiO2 fraction
-        self._pig_meta: Dict[str, Dict] = {}     # rm_id → display info
+        # _pig_meta stores per-pigment display + explainability + constraint info:
+        #   name, ci_name, full/tint LAB, compliance, fastness, heat_resistance,
+        #   n_recipes, conc_min/max/mean, polymer_counts
+        self._pig_meta: Dict[str, Dict] = {}     # rm_id → rich metadata
         self._tio2_rm_ids: set = set()
         self.stats: Dict = {}
 
@@ -117,15 +120,21 @@ class MLRecipeModel:
         a: float,
         b: float,
         polymer: str,
+        target: Optional[Tuple[float, float, float]] = None,
+        eligible_rm_ids: Optional[set] = None,
         top_n: int = 3,
     ) -> List[Dict]:
         """
-        Return up to top_n recipe suggestions as dicts.
-        Suggestions range from 1-colorant to 3-colorant blends.
-        Returns [] if model is not yet trained.
+        Return up to top_n recipe suggestions.
+        - target: (L,a,b) used to compute predicted ΔE for each suggestion.
+        - eligible_rm_ids: set of rm_ids passing compliance/fastness filters;
+          pigments outside this set are included but flagged as constraint_fail.
         """
         if not self.is_trained:
             return []
+
+        if target is None:
+            target = (L, a, b)
 
         feats = _feature_vector(L, a, b, polymer)
 
@@ -146,7 +155,13 @@ class MLRecipeModel:
             # Expected contribution: P(used) × predicted_concentration
             scored.append((rm_id, prob, conc))
 
-        scored.sort(key=lambda x: x[1] * x[2], reverse=True)
+        # Sort: eligible pigments with LAB data ranked first, then by P×conc
+        def _score_key(x):
+            rm_id, prob, conc = x
+            eligible = (eligible_rm_ids is None) or (rm_id in eligible_rm_ids)
+            has_lab = self._pig_meta.get(rm_id, {}).get("full_tone_L") is not None
+            return (0 if eligible else 1, 0 if has_lab else 1, -(prob * conc))
+        scored.sort(key=_score_key)
 
         # --- Predicted TiO2 from L* ---------------------------------------
         tio2_frac = 0.0
@@ -157,12 +172,21 @@ class MLRecipeModel:
                 pass
 
         # --- Build 1-, 2-, 3-colorant suggestions -------------------------
+        # Use only eligible pigments for the top-n selection;
+        # if not enough eligible, fall through to flagged ones
+        eligible_scored = [x for x in scored
+                           if eligible_rm_ids is None or x[0] in eligible_rm_ids]
+        all_scored = eligible_scored if len(eligible_scored) >= 1 else scored
+
         suggestions = []
         for n_colorants in [1, 2, 3]:
-            if len(scored) < n_colorants:
-                continue
-            pigs = scored[:n_colorants]
-            sug = self._build_suggestion(pigs, tio2_frac, polymer)
+            pool = all_scored[:n_colorants]
+            if len(pool) < n_colorants:
+                break
+            sug = self._build_suggestion(
+                pool, tio2_frac, polymer,
+                target=target, eligible_rm_ids=eligible_rm_ids,
+            )
             if sug:
                 suggestions.append(sug)
 
@@ -262,16 +286,40 @@ class MLRecipeModel:
         trainable = [rm_id for rm_id, cnt in appearances.items() if cnt >= MIN_SAMPLES]
         self.stats["trainable_pigments"] = len(trainable)
 
-        # Store display metadata
+        # Store rich metadata + explainability stats
+        import datetime
         for rm_id in trainable:
             rm = all_rms.get(rm_id)
+            concs = [s["pigments"][rm_id] for s in corpus if rm_id in s["pigments"]]
+            poly_counts: Dict[str, int] = {}
+            for s in corpus:
+                if rm_id in s["pigments"]:
+                    poly_counts[s["polymer"]] = poly_counts.get(s["polymer"], 0) + 1
+            dominant_poly = max(poly_counts, key=poly_counts.get) if poly_counts else "?"
             self._pig_meta[rm_id] = {
+                # display
                 "name": rm.rawmaterialname if rm else rm_id,
                 "ci_name": getattr(rm, "ci_name", None),
                 "full_tone_L": getattr(rm, "full_tone_L", None),
                 "full_tone_a": getattr(rm, "full_tone_a", None),
                 "full_tone_b": getattr(rm, "full_tone_b", None),
+                "tint_tone_L": getattr(rm, "tint_tone_L", None),
+                "tint_tone_a": getattr(rm, "tint_tone_a", None),
+                "tint_tone_b": getattr(rm, "tint_tone_b", None),
+                # constraint fields for eligibility checking
+                "compliance": getattr(rm, "compliance", None),
+                "light_fastness_tone": getattr(rm, "light_fastness_tone", None),
+                "weather_fastness_tone": getattr(rm, "weather_fastness_tone", None),
+                "heat_resistance": getattr(rm, "heat_resistance", None),
+                # explainability
+                "n_recipes": len(concs),
+                "conc_min_pct": round(min(concs) * 100, 3) if concs else None,
+                "conc_max_pct": round(max(concs) * 100, 3) if concs else None,
+                "conc_mean_pct": round((sum(concs) / len(concs)) * 100, 3) if concs else None,
+                "polymer_counts": poly_counts,
+                "dominant_polymer": dominant_poly,
             }
+        self.stats["trained_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
         # ── 6. Per-pigment classifier + regressor ──────────────────────────
         n_clf = n_reg = 0
@@ -407,66 +455,155 @@ class MLRecipeModel:
             "tio2": tio2_frac,
         }
 
-    def _build_suggestion(self, pigs, tio2_frac, polymer) -> Optional[Dict]:
+    def _build_suggestion(
+        self,
+        pigs,
+        tio2_frac: float,
+        polymer: str,
+        target: Optional[Tuple[float, float, float]] = None,
+        eligible_rm_ids: Optional[set] = None,
+    ) -> Optional[Dict]:
+        from services.color_engine import Pigment, predict_mixture_lab, delta_e_cie2000
+
         pig_total = sum(c for _, _, c in pigs)
         base_frac = max(0.0, 1.0 - pig_total - tio2_frac)
         grand_total = pig_total + tio2_frac + base_frac
-
         if grand_total < 1e-9:
             return None
 
-        components = []
+        # ── Build pigment system section ───────────────────────────────────
+        pigment_system = []
+        km_pigments = []          # (Pigment, conc) for K-M prediction
+        all_constraints_ok = True
 
-        # Colorants
         for rm_id, prob, conc in pigs:
             meta = self._pig_meta.get(rm_id, {})
             pct = round((conc / grand_total) * 100, 3)
-            components.append({
+
+            # Constraint check
+            constraint_ok = (eligible_rm_ids is None) or (rm_id in eligible_rm_ids)
+            if not constraint_ok:
+                all_constraints_ok = False
+
+            # Polymer coverage note
+            poly_counts = meta.get("polymer_counts", {})
+            total_samples = sum(poly_counts.values()) or 1
+            target_poly_samples = poly_counts.get(polymer.upper(), 0)
+            poly_pct = round((target_poly_samples / total_samples) * 100)
+            dominant = meta.get("dominant_polymer", "?")
+            if poly_pct < 20 and dominant != polymer.upper():
+                polymer_note = (
+                    f"Trained mainly on {dominant} ({poly_pct}% {polymer} data) — "
+                    f"loading may shift ±10–20% in {polymer}"
+                )
+            else:
+                polymer_note = None
+
+            # Try to build a K-M Pigment object for LAB prediction
+            ft_L = meta.get("full_tone_L")
+            if ft_L is not None:
+                try:
+                    pig_obj = Pigment(
+                        name=rm_id,
+                        full_L=ft_L,
+                        full_a=meta.get("full_tone_a") or 0.0,
+                        full_b=meta.get("full_tone_b") or 0.0,
+                        tint_L=meta.get("tint_tone_L") or ft_L,
+                        tint_a=meta.get("tint_tone_a") or 0.0,
+                        tint_b=meta.get("tint_tone_b") or 0.0,
+                    )
+                    km_pigments.append((pig_obj, conc / grand_total))
+                except Exception:
+                    pass
+
+            pigment_system.append({
                 "rawmaterialid": rm_id,
                 "name": meta.get("name", rm_id),
                 "ci_name": meta.get("ci_name"),
                 "role": "colorant",
+                "section": "pigment_system",
                 "pct": pct,
                 "kg_per_100kg": pct,
                 "confidence_pct": round(prob * 100, 1),
+                "constraint_ok": constraint_ok,
+                "constraint_note": None if constraint_ok else "Excluded by compliance / fastness / heat filter",
+                "polymer_note": polymer_note,
+                # explainability
+                "n_recipes": meta.get("n_recipes"),
+                "conc_range": (
+                    f"{meta['conc_min_pct']}–{meta['conc_max_pct']}%"
+                    if meta.get("conc_min_pct") is not None else None
+                ),
+                "typical_pct": meta.get("conc_mean_pct"),
+                # swatch
                 "full_tone_L": meta.get("full_tone_L"),
                 "full_tone_a": meta.get("full_tone_a"),
                 "full_tone_b": meta.get("full_tone_b"),
             })
 
-        # TiO2
+        # ── Opacifier section ──────────────────────────────────────────────
+        opacifier = []
         if tio2_frac > 0.005:
-            pct = round((tio2_frac / grand_total) * 100, 2)
-            components.append({
+            tio2_pct = round((tio2_frac / grand_total) * 100, 2)
+            opacifier.append({
                 "rawmaterialid": "TIO2",
                 "name": "TiO₂ (white pigment)",
                 "role": "opacity",
-                "pct": pct,
-                "kg_per_100kg": pct,
+                "section": "opacifier",
+                "pct": tio2_pct,
+                "kg_per_100kg": tio2_pct,
                 "confidence_pct": 100.0,
+                "constraint_ok": True,
                 "full_tone_L": 99.0,
                 "full_tone_a": 0.0,
                 "full_tone_b": 1.5,
             })
 
-        # Base resin
+        # ── Carrier section ────────────────────────────────────────────────
         base_pct = round((base_frac / grand_total) * 100, 2)
-        components.append({
+        carrier = [{
             "rawmaterialid": "BASE",
             "name": f"{polymer} base resin + fillers",
             "role": "carrier",
+            "section": "carrier",
             "pct": base_pct,
             "kg_per_100kg": base_pct,
             "confidence_pct": 100.0,
-        })
+            "constraint_ok": True,
+        }]
 
-        colorant_confs = [c["confidence_pct"] for c in components if c["role"] == "colorant"]
+        # ── Predicted LAB + ΔE via K-M ────────────────────────────────────
+        predicted_lab = None
+        delta_e = None
+        if km_pigments:
+            try:
+                pred = predict_mixture_lab(km_pigments, tio2_conc=tio2_frac / grand_total)
+                predicted_lab = {
+                    "L": round(pred[0], 2),
+                    "a": round(pred[1], 2),
+                    "b": round(pred[2], 2),
+                }
+                if target:
+                    delta_e = round(delta_e_cie2000(target, pred), 3)
+            except Exception:
+                pass
+
+        colorant_confs = [c["confidence_pct"] for c in pigment_system]
         avg_conf = sum(colorant_confs) / max(1, len(colorant_confs))
 
         return {
-            "components": components,
+            # sections (separate for UI rendering)
+            "pigment_system": pigment_system,
+            "opacifier": opacifier,
+            "carrier": carrier,
+            # flat list for backward compat
+            "components": pigment_system + opacifier + carrier,
+            # quality signals
             "n_colorants": len(pigs),
             "avg_confidence_pct": round(avg_conf, 1),
+            "all_constraints_ok": all_constraints_ok,
+            "predicted_lab": predicted_lab,
+            "delta_e": delta_e,
         }
 
 
@@ -492,12 +629,18 @@ def get_ml_suggestions(
     a: float,
     b: float,
     polymer: str,
+    eligible_rm_ids: Optional[set] = None,
     top_n: int = 3,
 ) -> List[Dict]:
     """Return ML recipe suggestions. Returns [] if model is still training."""
     if _model is None or not _model.is_trained:
         return []
-    return _model.predict(L, a, b, polymer, top_n=top_n)
+    return _model.predict(
+        L, a, b, polymer,
+        target=(L, a, b),
+        eligible_rm_ids=eligible_rm_ids,
+        top_n=top_n,
+    )
 
 
 def get_ml_status() -> Dict:
@@ -512,4 +655,5 @@ def get_ml_status() -> Dict:
         "status": "ready",
         "corpus_size": _model.stats.get("corpus_size", 0),
         "trainable_pigments": _model.stats.get("trainable_pigments", 0),
+        "trained_at": _model.stats.get("trained_at"),
     }
