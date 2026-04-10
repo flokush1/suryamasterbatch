@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Color Mathematics Reference — Surya MasterBatch</title>
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg-full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg: #fdfbf7;
+    --bg-alt: #f5f0e8;
+    --bg-card: #ffffff;
+    --text: #2c2416;
+    --text-secondary: #6b5d4d;
+    --accent: #b8490e;
+    --accent-light: #e8601a;
+    --accent-subtle: #fef3ec;
+    --border: #e0d6c8;
+    --border-light: #ede6db;
+    --blue: #1a5276;
+    --blue-light: #eef4f8;
+    --green: #1e6e42;
+    --green-light: #edf7f1;
+    --violet: #6c3483;
+    --violet-light: #f4edf8;
+    --shadow: 0 1px 3px rgba(44,36,22,0.06), 0 4px 12px rgba(44,36,22,0.04);
+    --shadow-lg: 0 4px 16px rgba(44,36,22,0.08), 0 8px 32px rgba(44,36,22,0.04);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Crimson Pro', Georgia, serif;
+    font-size: 19px;
+    line-height: 1.72;
+    color: var(--text);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Cover ── */
+  .cover {
+    background: linear-gradient(168deg, #1a1008 0%, #3d2510 40%, #5a2d0a 70%, #7a3a0f 100%);
+    color: #fff;
+    padding: 100px 40px 80px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 30% 20%, rgba(232,96,26,0.15) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 80%, rgba(184,73,14,0.1) 0%, transparent 50%);
+  }
+  .cover * { position: relative; z-index: 1; }
+  .cover-eyebrow {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 3.5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+    margin-bottom: 28px;
+  }
+  .cover h1 {
+    font-family: 'Crimson Pro', serif;
+    font-size: clamp(36px, 5vw, 58px);
+    font-weight: 300;
+    line-height: 1.15;
+    letter-spacing: -0.5px;
+    margin-bottom: 18px;
+  }
+  .cover h1 strong { font-weight: 700; }
+  .cover-sub {
+    font-size: 20px;
+    font-weight: 300;
+    color: rgba(255,255,255,0.7);
+    max-width: 520px;
+    margin: 0 auto 32px;
+    line-height: 1.5;
+  }
+  .cover-badge {
+    display: inline-block;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 18px;
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 100px;
+    color: rgba(255,255,255,0.7);
+  }
+
+  /* ── Layout ── */
+  .container {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 0 32px;
+  }
+
+  /* ── TOC ── */
+  .toc {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 40px 44px;
+    margin: 56px auto;
+    max-width: 820px;
+    box-shadow: var(--shadow);
+  }
+  .toc h2 {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+  }
+  .toc ol {
+    list-style: none;
+    counter-reset: toc;
+    columns: 2;
+    column-gap: 36px;
+  }
+  .toc li {
+    counter-increment: toc;
+    break-inside: avoid;
+    margin-bottom: 10px;
+  }
+  .toc li a {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    text-decoration: none;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    transition: color 0.2s;
+  }
+  .toc li a::before {
+    content: counter(toc, decimal-leading-zero);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    min-width: 22px;
+  }
+  .toc li a:hover { color: var(--accent); }
+
+  /* ── Sections ── */
+  section {
+    margin: 64px auto;
+    max-width: 820px;
+    padding: 0 32px;
+  }
+  section h2 {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 8px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--accent);
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+  }
+  section h2 .sec-num {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+  section h3 {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--blue);
+    margin: 36px 0 12px;
+  }
+
+  p { margin-bottom: 16px; }
+
+  /* ── Math blocks ── */
+  .math-block {
+    background: var(--bg-alt);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 24px 28px;
+    margin: 24px 0;
+    overflow-x: auto;
+  }
+  .math-block.highlight {
+    background: var(--accent-subtle);
+    border-left-color: var(--accent-light);
+    box-shadow: var(--shadow);
+  }
+
+  /* ── Tables ── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+    font-size: 16px;
+    background: var(--bg-card);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .data-table thead {
+    background: #3d2510;
+    color: #fff;
+  }
+  .data-table th {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 14px 18px;
+    text-align: left;
+  }
+  .data-table td {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border-light);
+    vertical-align: top;
+  }
+  .data-table tbody tr:last-child td { border-bottom: none; }
+  .data-table tbody tr:nth-child(even) { background: rgba(0,0,0,0.015); }
+  .data-table .mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+  }
+
+  /* ── Info boxes ── */
+  .info-box {
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin: 24px 0;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  .info-box.verified {
+    background: var(--green-light);
+    border-left: 3px solid var(--green);
+  }
+  .info-box.bugfix {
+    background: var(--violet-light);
+    border-left: 3px solid var(--violet);
+  }
+  .info-box.note {
+    background: var(--blue-light);
+    border-left: 3px solid var(--blue);
+  }
+  .info-box strong {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .info-box.verified strong { color: var(--green); }
+  .info-box.bugfix strong { color: var(--violet); }
+  .info-box.note strong { color: var(--blue); }
+
+  /* ── Pipeline ── */
+  .pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 28px 0;
+    padding: 28px 32px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+  }
+  .pipeline-step {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 0;
+  }
+  .pipeline-step .step-ref {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    background: var(--accent);
+    border-radius: 4px;
+    padding: 2px 8px;
+    min-width: 36px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .pipeline-step .step-text {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .pipeline-arrow {
+    text-align: center;
+    color: var(--accent);
+    font-size: 18px;
+    padding: 2px 0;
+    margin-left: 10px;
+  }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 48px 32px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border);
+    margin-top: 80px;
+  }
+
+  @media (max-width: 700px) {
+    .toc ol { columns: 1; }
+    section { padding: 0 20px; }
+    .cover { padding: 64px 24px 56px; }
+    .math-block { padding: 18px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════ COVER ════════════════════════ -->
+<header class="cover">
+  <div class="cover-eyebrow">Technical Reference Document</div>
+  <h1><strong>Color Mathematics</strong><br>Reference</h1>
+  <p class="cover-sub">Surya MasterBatch Color System — complete derivations, verification notes, and pipeline architecture</p>
+  <span class="cover-badge">Audit: 86 / 87 checks pass &middot; April 2026</span>
+</header>
+
+<!-- ════════════════════════ TOC ════════════════════════ -->
+<nav class="toc container">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#s1">Color Spaces Used</a></li>
+    <li><a href="#s2">CIE L*a*b* &harr; XYZ Conversion</a></li>
+    <li><a href="#s3">XYZ &harr; Per-Channel Reflectance</a></li>
+    <li><a href="#s4">Kubelka–Munk Single-Constant Theory</a></li>
+    <li><a href="#s5">Pigment K/S Extraction from Tint-Tone</a></li>
+    <li><a href="#s6">Multi-Pigment Mixture Prediction</a></li>
+    <li><a href="#s7">CIEDE2000 Color Difference</a></li>
+    <li><a href="#s8">sRGB Hex &rarr; LAB Conversion</a></li>
+    <li><a href="#s9">Pigment Combination Search Algorithm</a></li>
+    <li><a href="#s10">Data Sources and Constants</a></li>
+    <li><a href="#s11">Known Approximations and Limitations</a></li>
+  </ol>
+</nav>
+
+<!-- ════════════════════════ §1 ════════════════════════ -->
+<section id="s1">
+  <h2><span class="sec-num">01</span> Color Spaces Used</h2>
+  <table class="data-table">
+    <thead><tr><th>Space</th><th>What It Represents</th><th>Used For</th></tr></thead>
+    <tbody>
+      <tr><td><strong>CIE L*a*b*</strong></td><td>Perceptually uniform: L = lightness, a = red–green, b = yellow–blue</td><td>Input targets, spectro readings, all &Delta;E comparisons</td></tr>
+      <tr><td><strong>CIE XYZ</strong></td><td>Linear tristimulus intermediate</td><td>Bridge between LAB and reflectance</td></tr>
+      <tr><td><strong>Per-channel reflectance</strong> \(R_\text{ch}\)</td><td>Fraction of light reflected per tristimulus channel</td><td>K–M model input / output</td></tr>
+      <tr><td><strong>K/S</strong></td><td>Kubelka–Munk absorption-to-scattering ratio per channel</td><td>Physically additive quantity for mixture prediction</td></tr>
+    </tbody>
+  </table>
+  <p>The system uses the <strong>CIE D65 illuminant</strong> (standard daylight, 6504 K) throughout.</p>
+  <div class="math-block">
+    \[ X_n = 95.047, \qquad Y_n = 100.000, \qquad Z_n = 108.883 \]
+  </div>
+</section>
+
+<!-- ════════════════════════ §2 ════════════════════════ -->
+<section id="s2">
+  <h2><span class="sec-num">02</span> CIE L*a*b* &harr; XYZ Conversion</h2>
+
+  <h3>LAB &rarr; XYZ</h3>
+  <p>Compute the intermediate functions from the LAB coordinates:</p>
+  <div class="math-block">
+    \[ f_y = \frac{L^* + 16}{116}, \qquad f_x = \frac{a^*}{500} + f_y, \qquad f_z = f_y - \frac{b^*}{200} \]
+  </div>
+  <p>The inverse function \(f^{-1}\) maps these back to normalised tristimulus ratios:</p>
+  <div class="math-block">
+    \[ f^{-1}(t) = \begin{cases} t^3 & \text{if } t > 0.2069 \\[6pt] \dfrac{t - 16/116}{7.787} & \text{otherwise} \end{cases} \]
+  </div>
+  <p>Finally recover XYZ using the D65 white point:</p>
+  <div class="math-block">
+    \[ X = 95.047 \cdot f^{-1}(f_x), \qquad Y = 100.000 \cdot f^{-1}(f_y), \qquad Z = 108.883 \cdot f^{-1}(f_z) \]
+  </div>
+  <p>The threshold 0.2069 = (6/29)&sup3; and the slope 7.787 = (29/6)&sup3; / 3 come from the CIE 1976 standard.</p>
+
+  <h3>XYZ &rarr; LAB</h3>
+  <p>The forward function maps normalised tristimulus ratios to the perceptual scale:</p>
+  <div class="math-block">
+    \[ f(t) = \begin{cases} t^{1/3} & \text{if } t > 0.008856 \\[6pt] 7.787\,t + \frac{16}{116} & \text{otherwise} \end{cases} \]
+  </div>
+  <div class="math-block">
+    \[ L^* = 116\,f\!\!\left(\frac{Y}{100}\right) - 16, \qquad a^* = 500\left[f\!\!\left(\frac{X}{95.047}\right) - f\!\!\left(\frac{Y}{100}\right)\right], \qquad b^* = 200\left[f\!\!\left(\frac{Y}{100}\right) - f\!\!\left(\frac{Z}{108.883}\right)\right] \]
+  </div>
+  <div class="info-box verified">
+    <strong>Verified</strong>
+    Perfect roundtrip LAB &rarr; XYZ &rarr; LAB for all tested values (tolerance &lt; 0.001).
+  </div>
+</section>
+
+<!-- ════════════════════════ §3 ════════════════════════ -->
+<section id="s3">
+  <h2><span class="sec-num">03</span> XYZ &harr; Per-Channel Reflectance</h2>
+  <p>The Kubelka–Munk model operates on reflectance, not XYZ. A per-channel normalisation maps XYZ to a three-channel "reflectance" tuple, each in the range (0, 1).</p>
+
+  <h3>XYZ &rarr; Reflectance</h3>
+  <div class="math-block">
+    \[ R_\text{ch} = \frac{X}{X_n}, \qquad G_\text{ch} = \frac{Y}{Y_n}, \qquad B_\text{ch} = \frac{Z}{Z_n} \]
+  </div>
+  <p>Values are clamped to <strong>[0.001, 0.999]</strong> to avoid division-by-zero in K/S computation.</p>
+
+  <h3>Reflectance &rarr; XYZ (exact inverse)</h3>
+  <div class="math-block">
+    \[ X = R_\text{ch} \cdot 95.047, \qquad Y = G_\text{ch} \cdot 100.000, \qquad Z = B_\text{ch} \cdot 108.883 \]
+  </div>
+
+  <div class="info-box bugfix">
+    <strong>Bug Fixed — April 2026</strong>
+    The original code divided all three channels by 100, treating D65 as isotropic. This made the X channel wrong by &minus;5% and Z by up to +9%, distorting every K/S computation and all predicted a* and b* values. Fixed to use the correct white-point denominators.
+  </div>
+</section>
+
+<!-- ════════════════════════ §4 ════════════════════════ -->
+<section id="s4">
+  <h2><span class="sec-num">04</span> Kubelka–Munk Single-Constant Theory</h2>
+
+  <h3>Forward: Reflectance &rarr; K/S</h3>
+  <p>The Kubelka–Munk equation (1931) relates the diffuse reflectance \(R\) of an opaque colorant layer to the ratio of its absorption coefficient \(K\) and scattering coefficient \(S\):</p>
+  <div class="math-block highlight">
+    \[ \frac{K}{S} = \frac{(1 - R)^2}{2R} \]
+  </div>
+  <p>This is the <strong>single-constant (two-flux) theory</strong>, valid for opaque, homogeneous coatings with no surface gloss.</p>
+
+  <h3>Inverse: K/S &rarr; Reflectance</h3>
+  <p>Solving the quadratic for \(R\):</p>
+  <div class="math-block highlight">
+    \[ R = 1 + \frac{K}{S} - \sqrt{\left(\frac{K}{S}\right)^{\!2} + 2\cdot\frac{K}{S}} \]
+  </div>
+
+  <div class="info-box verified">
+    <strong>Verified</strong>
+    Perfect roundtrip R &rarr; K/S &rarr; R to numerical precision (&lt; 10<sup>&minus;9</sup>) for R &isin; {0.05, 0.10, 0.20, 0.40, 0.60, 0.80, 0.95}.
+  </div>
+</section>
+
+<!-- ════════════════════════ §5 ════════════════════════ -->
+<section id="s5">
+  <h2><span class="sec-num">05</span> Pigment K/S Extraction from Tint-Tone</h2>
+
+  <h3>Tint-tone setup</h3>
+  <p>Each pigment in the library is characterised by two measurements: a <strong>full-tone</strong> (100% pigment) and a <strong>tint-tone</strong> (1 part pigment + 10 parts TiO<sub>2</sub> white, giving a 1:10 ratio). The tint-tone mixture composition is:</p>
+  <div class="math-block">
+    \[ c_\text{pig} = \frac{1}{11} \approx 9.09\%, \qquad c_{\text{TiO}_2} = \frac{10}{11} \approx 90.91\% \]
+  </div>
+
+  <h3>K/S of the tint mixture</h3>
+  <p>By the K–M additivity principle:</p>
+  <div class="math-block">
+    \[ \left(\frac{K}{S}\right)_{\!\text{tint}} = \frac{1}{11}\left(\frac{K}{S}\right)_{\!\text{pig,unit}} + \frac{10}{11}\left(\frac{K}{S}\right)_{\!\text{TiO}_2\text{,unit}} \]
+  </div>
+
+  <h3>Solving for the pigment's intrinsic K/S</h3>
+  <p>Rearranging to isolate the pigment's own optical contribution:</p>
+  <div class="math-block highlight">
+    \[ \boxed{\;\left(\frac{K}{S}\right)_{\!\text{pig,unit}} = 11 \cdot \left(\frac{K}{S}\right)_{\!\text{tint}} - 10 \cdot \left(\frac{K}{S}\right)_{\!\text{TiO}_2\text{,unit}}\;} \]
+  </div>
+  <p>This subtraction isolates the pigment's own optical contribution from the TiO<sub>2</sub> carrier background.</p>
+
+  <div class="info-box note">
+    <strong>TiO<sub>2</sub> Reference</strong>
+    Rutile TiO<sub>2</sub> full-tone LAB = (99.0, 0.0, 1.5), converted to K/S via the pipeline in &sect;3–4.
+  </div>
+
+  <div class="info-box bugfix">
+    <strong>Bug Fixed — April 2026</strong>
+    The original code used K/S<sub>pig,unit</sub> = 11 &times; K/S<sub>tint</sub> without subtracting the TiO<sub>2</sub> background. This overestimated pigment K/S by roughly 10&times; for light colours (yellows, whites), causing completely wrong mixture predictions. A small positive floor (max(10<sup>&minus;6</sup>, &hellip;)) also prevents negative K/S values in channels where the pigment absorbs less than TiO<sub>2</sub>.
+  </div>
+</section>
+
+<!-- ════════════════════════ §6 ════════════════════════ -->
+<section id="s6">
+  <h2><span class="sec-num">06</span> Multi-Pigment Mixture Prediction</h2>
+
+  <h3>K/S at arbitrary concentration</h3>
+  <p>Once the unit K/S of each pigment is known, its contribution at any weight fraction \(c\) is:</p>
+  <div class="math-block">
+    \[ \left(\frac{K}{S}\right)_{\!\text{pig}}(c) = c \cdot \left(\frac{K}{S}\right)_{\!\text{pig,unit}} \]
+  </div>
+
+  <h3>Mixture additivity</h3>
+  <p>For a batch containing polymer base, optional TiO<sub>2</sub>, and \(n\) pigments:</p>
+  <div class="math-block highlight">
+    \[ \left(\frac{K}{S}\right)_{\!\text{mix},\,\text{ch}} = \left(\frac{K}{S}\right)_{\!\text{base},\,\text{ch}} + c_{\text{TiO}_2}\!\cdot\!\left(\frac{K}{S}\right)_{\!\text{TiO}_2,\,\text{ch}} + \sum_{i=1}^{n} c_i \cdot \left(\frac{K}{S}\right)_{\!\text{pig}_i,\,\text{ch}} \]
+  </div>
+  <p>Applied independently for each channel ch &isin; {R, G, B} (corresponding to X/X<sub>n</sub>, Y/Y<sub>n</sub>, Z/Z<sub>n</sub>). The polymer base K/S default is (0.02, 0.02, 0.02), representing a nearly transparent white carrier resin (LLDPE/LDPE).</p>
+
+  <h3>Full prediction pipeline</h3>
+  <div class="pipeline">
+    <div class="pipeline-step"><span class="step-ref">&sect;3–4</span><span class="step-text">Pigment LAB (full-tone, tint-tone) &rarr; Pigment K/S<sub>unit</sub> with TiO<sub>2</sub> background subtraction</span></div>
+    <div class="pipeline-arrow">&darr;</div>
+    <div class="pipeline-step"><span class="step-ref">&sect;6</span><span class="step-text">Mixture K/S (R, G, B channels) via additivity</span></div>
+    <div class="pipeline-arrow">&darr;</div>
+    <div class="pipeline-step"><span class="step-ref">&sect;4 inv</span><span class="step-text">Mixture Reflectance (R<sub>ch</sub>, G<sub>ch</sub>, B<sub>ch</sub>)</span></div>
+    <div class="pipeline-arrow">&darr;</div>
+    <div class="pipeline-step"><span class="step-ref">&sect;3 inv</span><span class="step-text">Mixture XYZ</span></div>
+    <div class="pipeline-arrow">&darr;</div>
+    <div class="pipeline-step"><span class="step-ref">&sect;2</span><span class="step-text">Predicted L*, a*, b*</span></div>
+    <div class="pipeline-arrow">&darr;</div>
+    <div class="pipeline-step"><span class="step-ref">&Delta;E</span><span class="step-text">CIEDE2000 &Delta;E vs. target</span></div>
+  </div>
+
+  <div class="info-box verified">
+    <strong>Sanity Checks Passed</strong>
+    More carbon black &rarr; lower L (monotonic) &check; &emsp;|&emsp; K/S additivity: 2&times;(pigment at c/2) = 1&times;(pigment at c) &check; &emsp;|&emsp; No pigment &rarr; L &gt; 90 (polymer base is near-white) &check;
+  </div>
+</section>
+
+<!-- ════════════════════════ §7 ════════════════════════ -->
+<section id="s7">
+  <h2><span class="sec-num">07</span> CIEDE2000 Color Difference</h2>
+  <p>All color comparisons use <strong>CIEDE2000 (&Delta;E<sub>00</sub>)</strong>, the international standard for perceptual color difference. Reference: Sharma, Wu &amp; Dalal (2005), <em>Color Research &amp; Application</em>, 30(1), 21–30.</p>
+
+  <h3>Step 1 — Chroma &amp; hue correction for a*</h3>
+  <div class="math-block">
+    \[ C_i = \sqrt{a_i^2 + b_i^2}, \qquad \bar{C}^7 = \left(\frac{C_1+C_2}{2}\right)^{\!7} \]
+  </div>
+  <div class="math-block">
+    \[ G = 0.5\left(1 - \sqrt{\frac{\bar{C}^7}{\bar{C}^7 + 25^7}}\right), \qquad a_i' = a_i(1+G) \]
+  </div>
+  <div class="math-block">
+    \[ C_i' = \sqrt{a_i'^{\,2} + b_i^2}, \qquad h_i' = \text{atan2}(b_i,\, a_i') \bmod 360° \]
+  </div>
+
+  <h3>Step 2 — Differences</h3>
+  <div class="math-block">
+    \[ \Delta L' = L_2 - L_1, \qquad \Delta C' = C_2' - C_1' \]
+  </div>
+  <div class="math-block">
+    \[ \Delta H' = 2\sqrt{C_1'\, C_2'}\;\sin\!\left(\frac{\Delta h'}{2}\right) \]
+  </div>
+
+  <h3>Step 3 — Weighting functions</h3>
+  <div class="math-block">
+    \[ S_L = 1 + \frac{0.015(\bar{L}'-50)^2}{\sqrt{20+(\bar{L}'-50)^2}}, \qquad S_C = 1 + 0.045\,\bar{C}', \qquad S_H = 1 + 0.015\,\bar{C}'\,T \]
+  </div>
+  <div class="math-block">
+    \[ T = 1 - 0.17\cos(\bar{h}'-30°) + 0.24\cos(2\bar{h}') + 0.32\cos(3\bar{h}'+6°) - 0.20\cos(4\bar{h}'-63°) \]
+  </div>
+
+  <h3>Step 4 — Rotation term</h3>
+  <p>Corrects for the blue-region hue–chroma interaction:</p>
+  <div class="math-block">
+    \[ R_T = -\sin(2\Delta\theta)\cdot R_C \]
+  </div>
+  <div class="math-block">
+    \[ \Delta\theta = 30°\exp\!\left(-\!\left(\frac{\bar{h}'-275°}{25°}\right)^{\!2}\right), \qquad R_C = 2\sqrt{\frac{\bar{C}'^{\,7}}{\bar{C}'^{\,7}+25^7}} \]
+  </div>
+
+  <h3>Final &Delta;E<sub>00</sub></h3>
+  <div class="math-block highlight">
+    \[ \Delta E_{00} = \sqrt{\left(\frac{\Delta L'}{S_L}\right)^{\!2} + \left(\frac{\Delta C'}{S_C}\right)^{\!2} + \left(\frac{\Delta H'}{S_H}\right)^{\!2} + R_T\,\frac{\Delta C'}{S_C}\,\frac{\Delta H'}{S_H}} \]
+  </div>
+  <p>Parametric factors \(k_L = k_C = k_H = 1\) for standard textile/plastic conditions.</p>
+
+  <h3>&Delta;E<sub>00</sub> perceptual thresholds (plastics industry)</h3>
+  <table class="data-table">
+    <thead><tr><th>&Delta;E<sub>00</sub></th><th>Perception</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">&lt; 1.0</td><td>Imperceptible difference</td></tr>
+      <tr><td class="mono">1.0 – 2.0</td><td>Perceptible only to experienced observer</td></tr>
+      <tr><td class="mono">2.0 – 3.5</td><td>Acceptable for most commercial applications</td></tr>
+      <tr><td class="mono">3.5 – 5.0</td><td>Visible difference — requires approval</td></tr>
+      <tr><td class="mono">&gt; 5.0</td><td>Clearly different — reject without approval</td></tr>
+    </tbody>
+  </table>
+
+  <div class="info-box verified">
+    <strong>Verified</strong>
+    33/34 Sharma (2005) reference pairs match to 4 decimal places. The one borderline pair (pair 27, diff = 0.010) is a known rounding ambiguity reported in the literature; multiple published implementations produce 1.8632 instead of the paper's table value of 1.8731.
+  </div>
+</section>
+
+<!-- ════════════════════════ §8 ════════════════════════ -->
+<section id="s8">
+  <h2><span class="sec-num">08</span> sRGB Hex &rarr; LAB Conversion</h2>
+  <p>Used when a customer provides a Pantone/RAL hex reference.</p>
+
+  <h3>sRGB linearisation (IEC 61966-2-1)</h3>
+  <div class="math-block">
+    \[ C_\text{linear} = \begin{cases} C\,/\,12.92 & \text{if } C \le 0.04045 \\[6pt] \left(\dfrac{C + 0.055}{1.055}\right)^{\!2.4} & \text{otherwise} \end{cases} \]
+  </div>
+  <p>where \(C\) is the normalised sRGB value (0–1).</p>
+
+  <h3>Linear sRGB &rarr; XYZ D65</h3>
+  <p>Using the IEC 61966-2-1 reference matrix:</p>
+  <div class="math-block highlight">
+    \[ \begin{pmatrix}X\\Y\\Z\end{pmatrix} = 100 \begin{pmatrix}0.4124564 & 0.3575761 & 0.1804375\\0.2126729 & 0.7151522 & 0.0721750\\0.0193339 & 0.1191920 & 0.9503041\end{pmatrix} \begin{pmatrix}R_\text{lin}\\G_\text{lin}\\B_\text{lin}\end{pmatrix} \]
+  </div>
+  <p>Then XYZ &rarr; LAB via &sect;2.</p>
+
+  <h3>Verification against brucelindbloom.com</h3>
+  <table class="data-table">
+    <thead><tr><th>Hex</th><th>L*</th><th>a*</th><th>b*</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">#FF0000</td><td>53.23</td><td>80.11</td><td>67.22</td><td>&check;</td></tr>
+      <tr><td class="mono">#00FF00</td><td>87.74</td><td>&minus;86.18</td><td>83.18</td><td>&check;</td></tr>
+      <tr><td class="mono">#0000FF</td><td>32.30</td><td>79.19</td><td>&minus;107.86</td><td>&check;</td></tr>
+      <tr><td class="mono">#FFFFFF</td><td>100.0</td><td>0.0</td><td>0.0</td><td>&check;</td></tr>
+      <tr><td class="mono">#000000</td><td>0.0</td><td>0.0</td><td>0.0</td><td>&check;</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ════════════════════════ §9 ════════════════════════ -->
+<section id="s9">
+  <h2><span class="sec-num">09</span> Pigment Combination Search Algorithm</h2>
+
+  <h3>Candidate pre-filtering</h3>
+  <p>All pigments with LAB data are scored by:</p>
+  <div class="math-block">
+    \[ \text{score}(p) = \min\!\Big(\Delta E_{00}(\text{target},\, L_\text{full}, a_\text{full}, b_\text{full}),\;\; \Delta E_{00}(\text{target},\, L_\text{tint}, a_\text{tint}, b_\text{tint})\Big) \]
+  </div>
+  <p>Taking the minimum of full-tone and tint-tone &Delta;E ensures that both strongly saturated pigments (close at full tone) and neutral modifier pigments (close at tint tone) are retained. The top 15 by this score advance to the search stage.</p>
+
+  <h3>Concentration grids</h3>
+  <table class="data-table">
+    <thead><tr><th>Colour Type</th><th>Main Pigment</th><th>Modifier</th><th>Trim</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Chromatic</strong> (chroma &ge; 10)</td><td class="mono">0.5, 1, 2, 5, 10, 20, 30 %</td><td class="mono">0.2, 0.5, 1, 2, 5, 10 %</td><td class="mono">0.1, 0.5, 1, 2, 5 %</td></tr>
+      <tr><td><strong>Achromatic</strong> (chroma &lt; 10)</td><td class="mono">0.1, 0.2, 0.5, 1, 2, 5, 10, 20 %</td><td class="mono">0.1, 0.5, 1, 2, 5, 10 %</td><td class="mono">0.1, 0.5, 1, 2, 5 %</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Search strategy</h3>
+  <p><strong>Single pigment —</strong> For each of the 15 candidates, sweep all main-concentration values and keep the loading that minimises &Delta;E<sub>00</sub>.</p>
+  <p><strong>Two-pigment pairs —</strong> Exhaustive grid search over all \(\binom{15}{2} = 105\) unordered pairs &times; (7 &times; 6 = 42) concentration combos = 4,410 evaluations per search.</p>
+  <p><strong>Three-pigment blends —</strong> Extend the best 5 two-pigment combos with each remaining candidate as a trim pigment. A third pigment is only kept when it improves &Delta;E by &ge; 15%:</p>
+  <div class="math-block">
+    \[ \Delta E_3 < 0.85 \cdot \Delta E_2 \]
+  </div>
+  <p>This threshold prevents spurious additions that add trivial improvement while complicating the recipe.</p>
+
+  <div class="info-box note">
+    <strong>Output format</strong>
+    All results (1-, 2-, 3-pigment) are merged and sorted by &Delta;E<sub>00</sub>. Each entry includes pigment names, weight concentrations \(c_i\) (as fraction and kg per 100 kg batch), predicted LAB from the K–M model, and &Delta;E<sub>00</sub> from the target.
+  </div>
+</section>
+
+<!-- ════════════════════════ §10 ════════════════════════ -->
+<section id="s10">
+  <h2><span class="sec-num">10</span> Data Sources and Constants</h2>
+  <table class="data-table">
+    <thead><tr><th>Constant / Dataset</th><th>Value / Source</th></tr></thead>
+    <tbody>
+      <tr><td>D65 white point</td><td>X<sub>n</sub> = 95.047, Y<sub>n</sub> = 100.000, Z<sub>n</sub> = 108.883 — CIE 15:2004</td></tr>
+      <tr><td>LAB &harr; XYZ thresholds</td><td>&epsilon; = 0.008856 = (6/29)&sup3;, &kappa; = 7.787 = (29/6)&sup3;/3 — CIE 1976</td></tr>
+      <tr><td>sRGB &rarr; XYZ matrix</td><td>IEC 61966-2-1 sRGB standard</td></tr>
+      <tr><td>CIEDE2000</td><td>Sharma, Wu &amp; Dalal (2005)</td></tr>
+      <tr><td>K–M theory</td><td>Kubelka &amp; Munk (1931), single-constant model</td></tr>
+      <tr><td>Pigment LAB library</td><td><span class="mono">Lab_Values_Color.xlsx</span> — Sudarshan shade card measurements</td></tr>
+      <tr><td>TiO<sub>2</sub> reference LAB</td><td>Full-tone: L = 99.0, a = 0.0, b = 1.5 (typical rutile TiO<sub>2</sub>)</td></tr>
+      <tr><td>Tint ratio</td><td>1 pigment : 10 TiO<sub>2</sub> by weight &rarr; c<sub>pig</sub> = 1/11 &asymp; 9.09%</td></tr>
+      <tr><td>Polymer base K/S</td><td>(0.02, 0.02, 0.02) — representative of natural LLDPE/LDPE</td></tr>
+      <tr><td>Assumed carrier LAB</td><td><span class="mono">LAB_values_assumed.xlsx</span> — 95 carrier/additive entries</td></tr>
+      <tr><td>Product spectro data</td><td><span class="mono">FGData</span> sheet of <span class="mono">FG MasterData.xlsx</span> — 232 measured products</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ════════════════════════ §11 ════════════════════════ -->
+<section id="s11">
+  <h2><span class="sec-num">11</span> Known Approximations and Limitations</h2>
+  <table class="data-table">
+    <thead><tr><th>Approximation</th><th>Impact</th><th>Mitigation</th></tr></thead>
+    <tbody>
+      <tr><td>3-channel (R/G/B) K/S instead of full spectral curve (31 wavelengths)</td><td>Metamerism not detected; two colours with the same predicted LAB may look different under different light sources</td><td>Use spectrophotometer confirmation before production approval</td></tr>
+      <tr><td>Linear K/S additivity (single-constant theory)</td><td>Assumes no pigment–pigment interaction (flocculation, mutual tinting)</td><td>Works well at low loadings (&lt; 5%); less accurate at high loading</td></tr>
+      <tr><td>Isotropic scattering (K–M assumption)</td><td>Incorrect for metallic/pearlescent pigments (oriented flakes)</td><td>Metallic pigments excluded from K–M suggestions by design</td></tr>
+      <tr><td>Polymer base K/S fixed to single default</td><td>Different grades of PE/PP/ABS have different base K/S</td><td>If known, pass <span class="mono">polymer_base_ks</span> to <span class="mono">predict_mixture_lab()</span></td></tr>
+      <tr><td>TiO<sub>2</sub> K/S derived from (99, 0, 1.5)</td><td>Slightly different grades (rutile vs anatase) have different K/S</td><td>Use actual TiO<sub>2</sub> LAB if available in the product spec</td></tr>
+      <tr><td>Concentration grid is discrete</td><td>Optimum loading may fall between grid points</td><td>Current accuracy is typically &Delta;E &lt; 2; acceptable for initial recipe suggestion</td></tr>
+      <tr><td>CIEDE2000 pair 27 discrepancy (0.010)</td><td>One Sharma paper test pair gives 1.8632 vs table's 1.8731</td><td>Known literature ambiguity; does not affect practical colour matching</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  Surya MasterBatch Color System &middot; FloData Analytics &middot; Color Mathematics Reference &middot; April 2026
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,39 @@
+pigment_name,ci_name,chemistry,light_fastness_tone,light_fastness_tint,weather_fastness_tone,weather_fastness_tint,heat_resistance,bleed_pvc,warp_hdpe
+YELLOW 114,PY 62,Monoazo,7.0,6.0,,,250,Low,Low
+YELLOW 2909,PY 180,Benzimidazolone,6.0,6.0,,,290,Low,Low
+YELLOW 132K,PY 191,Monoazo,7.0,6.0,,,300,Low,Low
+YELLOW 2939 K,PY 139,Isoindoline,8.0,7.0,,,240,Low,Low
+YELLOW 2925K,PY 110,Isoindolinone,8.0,7.0,5.0,4.0,300,,
+YELLOW 2927,PY 110,Isoindolinone,8.0,7.0,5.0,4.0,300,,
+ORANGE 2917,PO 64,Benzimidazolone,8.0,7.0,4.0,3.0,300,Low,Low
+ORANGE 212,PO 34,Disazo,7.0,5.0,,,200,,
+RED 5016,PR 53:1,Monoazo-Ba-Lake,4.0,2.0,,,270,,
+RED 570,PR 48:3,Monoazo-Sr-Lake,6.0,5.0,,,240,Low,Low
+RED 2964K,PR 170,Naphthol,8.0,7.0,3.0,,270,Low,Low
+RED 2967K,PR 170,Naphthol,8.0,7.0,,,250,Low,Low
+RED 554,PR 48:2,Monoazo-Ca-Lake,7.0,5.0,,,240,Low,Low
+RED 2985,PV 19,Quinacridone,8.0,7.0,5.0,4.0,300,Low,Low
+RED 2953K,PR 264,DPP,8.0,8.0,5.0,4.0,300,,
+RED 635,PR 57:1,Monoazo-Ca-Lake,6.0,4.0,,,240,,
+RED 2991K,PR 122,Quinacridone,8.0,8.0,5.0,5.0,300,Low,Low
+BLUE 2764,PB 15:1,Phthalocyanine,8.0,8.0,5.0,5.0,280,,
+BLUE 2789,PB 15:3,Phthalocyanine,8.0,8.0,5.0,5.0,300,,
+GREEN 2730K,PG 7,Phthalocyanine,8.0,8.0,5.0,5.0,300,,
+YELLOW 162K,PY 17,Disazo,7.0,6.0,,,200,,
+YELLOW 165,PY 13,Disazo,6.0,6.0,,,200,,
+YELLOW 137K,PY 83,Disazo,7.0,6.0,,,200,,
+YELLOW 2933,PY 139,Isoindoline,7.0,7.0,,,240,Low,
+ORANGE 203K,PO 13,Disazo,5.0,3.0,,,200,,
+RED 507K,PR 53:1,Monoazo Ba-Lake,5.0,2.0,,,260,,
+RED 557K,PR 48:1,Monoazo Ba-Lake,6.0,4.0,,,240,,
+RED 2957K,PR 254,DPP,8.0,7.0,5.0,4.0,300,,
+RED 2963K,PR 170,Naphthol,8.0,7.0,,,260,Low,
+RED 564,PR 48:2,Monoazo Ca-Lake,7.0,5.0,,,240,Low,
+RED 565,PR 48:2,Monoazo Ca-Lake,6.0,4.0,,,240,,
+RED 562,PR 48:2,Monoazo Ca-Lake,6.0,4.0,,,240,,
+RED 587,PR 57:1,Monoazo Ca-Lake,6.0,3.0,,,240,,
+RED 2975K,PR 177,Anthraquinone,8.0,7.0,5.0,4.0,260,Low,
+PINK 2992,PR 122,Quinacridone,8.0,7.0,5.0,4.0,300,Low,
+BLUE 2633K,PB 15,Phthalocyanine,8.0,8.0,,,,,
+BLUE 2746,PB 15:1,Phthalocyanine,8.0,8.0,5.0,5.0,280,,
+GREEN 2724K,PG 7,Phthalocyanine,8.0,8.0,5.0,5.0,300,,
