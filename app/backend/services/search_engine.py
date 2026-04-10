@@ -16,6 +16,7 @@ from models.database import (
     RawMaterial, AlphaCode, LabResult
 )
 from services.color_engine import delta_e_cie2000, Pigment, predict_mixture_lab, hex_to_lab
+from services.ml_engine import get_ml_suggestions, get_ml_status
 
 
 # Compliance hierarchy (what each level covers)
@@ -588,6 +589,12 @@ def search_recipes(
         top_n=5,
     )
 
+    # -----------------------------------------------------------------------
+    # Step 5: ML recipe suggestions (trained models)
+    # -----------------------------------------------------------------------
+    ml_suggestions = get_ml_suggestions(target_L, target_a, target_b, polymer, top_n=3)
+    ml_status = get_ml_status()
+
     return {
         "target_lab": {"L": target_L, "a": target_a, "b": target_b},
         "polymer": polymer.upper(),
@@ -596,6 +603,8 @@ def search_recipes(
         "cross_polymer_suggestions": cross_polymer[:top_n],
         "pigment_suggestions": pigment_suggestions,
         "eligible_pigments": [rm.to_dict() for rm in eligible],
+        "ml_suggestions": ml_suggestions,
+        "ml_status": ml_status,
         "total_exact": len(exact_matches),
         "total_cross": len(cross_polymer),
     }

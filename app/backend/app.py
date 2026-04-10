@@ -29,6 +29,10 @@ def create_app():
     app.register_blueprint(lab_bp)
     app.register_blueprint(materials_bp)
 
+    # Start ML model training in background (non-blocking)
+    from services.ml_engine import init_ml_model
+    init_ml_model(app)
+
     return app
 
 

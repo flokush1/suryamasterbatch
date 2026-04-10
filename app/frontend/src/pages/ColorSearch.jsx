@@ -124,6 +124,69 @@ function getMaterialRole(r) {
   return { type: "—", fn: "—", color: "—", badge: "bg-gray-100 text-gray-400" };
 }
 
+function MLSuggestionCard({ s, rank }) {
+  const colorantCount = s.n_colorants;
+  const typeLabel =
+    colorantCount === 1 ? "1 colorant" :
+    colorantCount === 2 ? "2 colorants" : "3 colorants";
+  const typeColor =
+    colorantCount === 1 ? "bg-gray-100 text-gray-600" :
+    colorantCount === 2 ? "bg-violet-100 text-violet-700" : "bg-fuchsia-100 text-fuchsia-700";
+
+  return (
+    <div className="border rounded-lg p-3 bg-white shadow-sm text-sm flex flex-col gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        {rank != null && (
+          <span className="text-xs font-bold text-gray-400 w-5 text-center">#{rank + 1}</span>
+        )}
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeColor}`}>{typeLabel}</span>
+        <span className="ml-auto text-xs text-gray-400">
+          avg confidence {s.avg_confidence_pct}%
+        </span>
+      </div>
+
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-gray-400 border-b">
+            <th className="text-left font-medium pb-0.5">Component</th>
+            <th className="text-left font-medium pb-0.5">Role</th>
+            <th className="text-right font-medium pb-0.5">%</th>
+            <th className="text-right font-medium pb-0.5">Conf.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {s.components.map((c, i) => (
+            <tr key={i} className="border-t border-gray-100">
+              <td className="py-0.5 pr-2 font-medium text-gray-800">
+                <div className="flex items-center gap-1">
+                  {c.full_tone_L != null && (
+                    <LabSwatch L={c.full_tone_L} a={c.full_tone_a || 0} b={c.full_tone_b || 0} size="w-4 h-4" />
+                  )}
+                  {c.name}
+                  {c.ci_name && <span className="text-gray-400 font-normal">· {c.ci_name}</span>}
+                </div>
+              </td>
+              <td className="py-0.5 pr-2">
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                  c.role === "colorant" ? "bg-red-100 text-red-700" :
+                  c.role === "opacity" ? "bg-gray-100 text-gray-600" :
+                  "bg-blue-100 text-blue-700"
+                }`}>{c.role}</span>
+              </td>
+              <td className="py-0.5 text-right font-semibold text-indigo-700">
+                {c.pct?.toFixed(2)}%
+              </td>
+              <td className="py-0.5 text-right text-gray-500">
+                {c.role === "colorant" ? `${c.confidence_pct}%` : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function ResultCard({ result, label }) {
   const [showRecipe, setShowRecipe] = useState(false);
   const lab = result.measured_lab || result.predicted_lab || {};
@@ -492,6 +555,35 @@ export default function ColorSearch() {
               </div>
             </section>
           )}
+
+          {/* ML Recipe suggestions */}
+          {results.ml_suggestions && results.ml_suggestions.length > 0 ? (
+            <section>
+              <h2 className="text-lg font-semibold mb-1">
+                ML Recipe Suggestions
+                <span className="ml-2 text-xs font-normal px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">
+                  Learned from {results.ml_status?.corpus_size || "?"} recipes ·{" "}
+                  {results.ml_status?.trainable_pigments || "?"} pigment models
+                </span>
+              </h2>
+              <p className="text-xs text-gray-500 mb-3">
+                RandomForest + GradientBoosting trained on historical recipe data.
+                Predictions interpolate across the colour space — not lookups.
+                "Confidence" is the model's probability that this pigment belongs in the recipe.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {results.ml_suggestions.map((s, i) => (
+                  <MLSuggestionCard key={i} s={s} rank={i} />
+                ))}
+              </div>
+            </section>
+          ) : results.ml_status?.status === "training" ? (
+            <section>
+              <div className="text-sm text-gray-400 italic border rounded-lg p-3 bg-gray-50">
+                ML model is still training in the background — refresh after a moment to see ML suggestions.
+              </div>
+            </section>
+          ) : null}
         </div>
       )}
     </div>

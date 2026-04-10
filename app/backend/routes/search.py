@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from services.search_engine import search_recipes, get_eligible_pigments, get_product_cost_estimate
+from services.ml_engine import get_ml_status
 from models.database import RalPantoneShade
 
 search_bp = Blueprint("search", __name__)
@@ -52,6 +53,12 @@ def color_search():
         top_n=int(data.get("top_n", 10)),
     )
     return jsonify(results)
+
+
+@search_bp.route("/api/ml-status", methods=["GET"])
+def ml_status():
+    """GET /api/ml-status  — check if ML model is trained yet."""
+    return jsonify(get_ml_status())
 
 
 @search_bp.route("/api/pigments", methods=["GET"])
