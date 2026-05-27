@@ -103,6 +103,9 @@ class MLRecipeModel:
         #   n_recipes, conc_min/max/mean, polymer_counts
         self._pig_meta: Dict[str, Dict] = {}     # rm_id → rich metadata
         self._tio2_rm_ids: set = set()
+        # K-M per-channel K/S scale corrections derived from confirmed feedback.
+        # Format: {rm_id: (scale_R, scale_G, scale_B)}  — default (1,1,1) = no change.
+        self.km_corrections: Dict[str, Tuple[float, float, float]] = {}
         self.stats: Dict = {}
 
     # ------------------------------------------------------------------
@@ -383,6 +386,146 @@ class MLRecipeModel:
             f"pig_reg={n_reg}, tio2={'yes' if self._tio2_reg else 'no'}"
         )
 
+        # ── 8. K-M coefficient calibration from confirmed feedback ─────────
+        try:
+            self._calibrate_km(all_rms)
+        except Exception as exc:
+            logger.warning(f"ML: K-M calibration skipped: {exc}")
+
+    def _calibrate_km(self, all_rms: Dict):
+        """
+        Back-calculate per-pigment K/S scale corrections using confirmed feedback
+        observations (feedback_record rows where confirmed_L/a/b is set).
+
+        Only single-colorant observations are used because in multi-pigment blends
+        the individual K/S contributions cannot be decoupled without iterative
+        optimisation.  For each qualifying pigment we solve, per channel:
+
+            scale = (K/S_measured - c_tio2 * K/S_TiO2 - c_base * K/S_polymer)
+                    / (c_pig * K/S_pig_unit_original)
+
+        and average the resulting scale across all observations (geometric mean
+        per channel, clamped to [0.1, 10] to prevent wild swings on noisy data).
+
+        Results are stored in self.km_corrections and consumed by search_engine
+        when building Pigment objects for K-M mixture prediction.
+        """
+        from models.database import FeedbackRecord, RawMaterial
+        from services.color_engine import lab_to_ks, ks_from_reflectance, _TIO2_KS
+
+        # K/S of a near-transparent polymer base (same default as predict_mixture_lab)
+        KS_POLY = (0.02, 0.02, 0.02)
+
+        confirmed = FeedbackRecord.query.filter(
+            FeedbackRecord.confirmed_L.isnot(None)
+        ).all()
+
+        if not confirmed:
+            return
+
+        # Accumulate per-pigment scale observations: {rm_id: [(sr, sg, sb), ...]}
+        obs: Dict[str, list] = {}
+
+        for fb in confirmed:
+            if not fb.recipe_snapshot:
+                continue
+            try:
+                recipe = json.loads(fb.recipe_snapshot)
+            except Exception:
+                continue
+            if not recipe:
+                continue
+
+            # Separate TiO2 from colorant pigments
+            tio2_pct = 0.0
+            colorants = []
+            for item in recipe:
+                rm_id = item.get("rm_id") or item.get("rawmaterialid")
+                pct = float(item.get("percentage") or item.get("qtyinkg") or 0.0)
+                if not rm_id or pct <= 0:
+                    continue
+                if rm_id in self._tio2_rm_ids:
+                    tio2_pct += pct
+                else:
+                    colorants.append((rm_id, pct))
+
+            # Only calibrate single-colorant observations
+            if len(colorants) != 1:
+                continue
+
+            rm_id, pig_pct = colorants[0]
+            rm = all_rms.get(rm_id)
+            if rm is None or rm.tint_tone_L is None or rm.full_tone_L is None:
+                continue
+
+            # Convert percentages to weight fractions
+            total_pct = pig_pct + tio2_pct
+            if total_pct <= 0 or total_pct > 100:
+                continue
+            c_pig  = pig_pct  / 100.0
+            c_tio2 = tio2_pct / 100.0
+            c_base = max(0.0, 1.0 - c_pig - c_tio2)
+
+            # K/S of the confirmed measured colour
+            try:
+                ks_meas = lab_to_ks(fb.confirmed_L, fb.confirmed_a, fb.confirmed_b)
+            except Exception:
+                continue
+
+            # Original K/S of this pigment per unit concentration
+            from services.color_engine import lab_to_ks as _l2ks, _TIO2_KS as _tks
+            ks_tint = _l2ks(rm.tint_tone_L,
+                            rm.tint_tone_a or 0.0,
+                            rm.tint_tone_b or 0.0)
+            ks_unit_orig = tuple(max(1e-6, 11.0 * kt - 10.0 * kw)
+                                 for kt, kw in zip(ks_tint, _tks))
+
+            # Per-channel scale: what multiple of the original K/S_pig matches the measurement?
+            scales = []
+            valid = True
+            for ch in range(3):
+                numerator = (ks_meas[ch]
+                             - c_tio2 * _tks[ch]
+                             - c_base * KS_POLY[ch])
+                denominator = c_pig * ks_unit_orig[ch]
+                if denominator < 1e-9 or numerator <= 0:
+                    valid = False
+                    break
+                s = numerator / denominator
+                # Clamp: don't accept wild outliers
+                scales.append(max(0.1, min(10.0, s)))
+
+            if not valid or len(scales) != 3:
+                continue
+
+            obs.setdefault(rm_id, []).append(tuple(scales))
+
+        # Geometric mean of scales per channel per pigment (≥2 observations required)
+        new_corrections: Dict[str, Tuple[float, float, float]] = {}
+        for rm_id, scale_list in obs.items():
+            if len(scale_list) < 2:
+                continue
+            geo = []
+            for ch in range(3):
+                vals = [s[ch] for s in scale_list]
+                product = 1.0
+                for v in vals:
+                    product *= v
+                geo.append(product ** (1.0 / len(vals)))
+            new_corrections[rm_id] = tuple(geo)
+            logger.info(
+                f"K-M calibration: {rm_id} corrections "
+                f"R={geo[0]:.3f} G={geo[1]:.3f} B={geo[2]:.3f} "
+                f"(from {len(scale_list)} observations)"
+            )
+
+        if new_corrections:
+            self.km_corrections = new_corrections
+            self.stats["km_calibrated_pigments"] = len(new_corrections)
+            logger.info(f"K-M: calibrated {len(new_corrections)} pigment(s) from feedback")
+        else:
+            logger.debug("K-M: no single-colorant confirmed feedback available for calibration")
+
     # ------------------------------------------------------------------
     # Static helpers
     # ------------------------------------------------------------------
@@ -612,6 +755,7 @@ class MLRecipeModel:
 # ---------------------------------------------------------------------------
 
 _model: Optional[MLRecipeModel] = None
+_is_retraining: bool = False
 
 
 def init_ml_model(app) -> None:
@@ -622,6 +766,50 @@ def init_ml_model(app) -> None:
     global _model
     _model = MLRecipeModel()
     _model.train_async(app)
+
+
+def retrain_ml_model(app) -> Dict:
+    """
+    Trigger an on-demand retrain of the ML model in a background thread.
+    Resets the current model and rebuilds from all LabResult + recipe data in DB.
+    Returns immediately; check GET /api/ml-status for completion.
+    """
+    global _model, _is_retraining
+
+    if _is_retraining:
+        return {
+            "status": "already_retraining",
+            "message": "A retrain is already in progress. Check /api/ml-status.",
+        }
+
+    if _model is None:
+        _model = MLRecipeModel()
+
+    def _wrapper():
+        global _is_retraining
+        _is_retraining = True
+        try:
+            # Reset state so predictions return [] while retraining
+            _model.is_trained = False
+            _model._training_error = None
+            _model._pig_clf.clear()
+            _model._pig_reg.clear()
+            _model._pig_meta.clear()
+            _model._tio2_reg = None
+            _model.stats = {}
+            logger.info("ML: manual retrain triggered")
+            _model._train(app)
+        except Exception as exc:
+            logger.exception("ML: retrain failed")
+        finally:
+            _is_retraining = False
+
+    t = threading.Thread(target=_wrapper, daemon=True)
+    t.start()
+    return {
+        "status": "started",
+        "message": "Retrain started in background. Poll GET /api/ml-status for completion.",
+    }
 
 
 def get_ml_suggestions(
@@ -643,10 +831,26 @@ def get_ml_suggestions(
     )
 
 
+def get_km_corrections() -> Dict[str, Tuple[float, float, float]]:
+    """
+    Return the per-pigment K/S scale corrections derived from confirmed feedback.
+    Format: {rm_id: (scale_R, scale_G, scale_B)}
+    Returns empty dict if no calibration data exists or model not trained.
+    """
+    if _model is None:
+        return {}
+    return _model.km_corrections
+
+
 def get_ml_status() -> Dict:
     """Status dict for health-check / debug endpoint."""
     if _model is None:
         return {"status": "not_initialized"}
+    if _is_retraining:
+        return {
+            "status": "retraining",
+            "message": "Manual retrain in progress — predictions paused.",
+        }
     if _model._training_error:
         return {"status": "error", "detail": _model._training_error}
     if not _model.is_trained:

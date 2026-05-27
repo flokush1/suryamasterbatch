@@ -116,7 +116,8 @@ class Pigment:
 
     def __init__(self, name: str,
                  full_L: float, full_a: float, full_b: float,
-                 tint_L: float, tint_a: float, tint_b: float):
+                 tint_L: float, tint_a: float, tint_b: float,
+                 ks_corrections: tuple = (1.0, 1.0, 1.0)):
         self.name = name
         self.full_tone_lab = (full_L, full_a, full_b)
         self.tint_tone_lab = (tint_L, tint_a, tint_b)
@@ -127,9 +128,14 @@ class Pigment:
         #   K/S_tint = (1/11)*K/S_pig_unit + (10/11)*K/S_TiO2_unit
         # Solving: K/S_pig_unit = 11*K/S_tint - 10*K/S_TiO2_unit
         # Clamp to a small positive floor so dark channels don't go negative.
-        self._ks_unit: Tuple[float, float, float] = tuple(
+        base_ks = tuple(
             max(1e-6, 11.0 * kt - 10.0 * kw)
             for kt, kw in zip(self._ks_tint, _TIO2_KS)
+        )
+        # Apply per-channel corrections derived from confirmed feedback calibration.
+        # corrections=(1,1,1) means no change from original tint data.
+        self._ks_unit: Tuple[float, float, float] = tuple(
+            k * c for k, c in zip(base_ks, ks_corrections)
         )
 
     def ks_at_concentration(self, conc: float) -> Tuple[float, float, float]:

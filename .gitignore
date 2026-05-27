@@ -1,21 +1,37 @@
 # Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 *.pyd
 .venv/
 venv/
 *.egg-info/
+*.log
 
-# Database
+# Database — never commit the live DB or SQLite journals
 *.db
 *.sqlite3
+*.db-shm
+*.db-wal
+
+# Cache (in-memory search cache written to disk)
+cache/
 
 # Node
 node_modules/
 dist/
+build/
+
+# Environment / secrets — keep .env.example if you have one
 .env
+.env.*
+!.env.example
 
 # OS
 .DS_Store
 Thumbs.db
+
+# VS Code
+.vscode/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/

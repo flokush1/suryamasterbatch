@@ -1,0 +1,21 @@
+# .dockerignore — files excluded from Docker build context
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+node_modules/
+app/frontend/node_modules/
+app/frontend/dist/
+surya.db
+*.docx
+*.pdf
+COLOR_MATH.md
+create_system_doc.py
+LAB_values_assumed.xlsx
+surya_export.xlsx
+KM_Model_Workflow.docx
+ML_Model_Workflow.docx
+Project.docx
+cache/

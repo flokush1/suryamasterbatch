@@ -1,6 +1,6 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from services.search_engine import search_recipes, get_eligible_pigments, get_product_cost_estimate
-from services.ml_engine import get_ml_status
+from services.ml_engine import get_ml_status, retrain_ml_model
 from models.database import RalPantoneShade
 
 search_bp = Blueprint("search", __name__)
@@ -89,4 +89,23 @@ def product_cost(product_id):
     result = get_product_cost_estimate(product_id)
     if result is None:
         return jsonify({"error": "Product not found or no recipe"}), 404
+    return jsonify(result)
+
+
+@search_bp.route("/api/retrain", methods=["POST"])
+def trigger_retrain():
+    """
+    POST /api/retrain
+    Triggers an on-demand ML model retrain using all current LabResult + recipe data.
+    Returns immediately. Poll GET /api/ml-status to check when it is ready again.
+
+    Use after adding new spectrophotometer readings via POST /api/lab-results so that
+    the ML model incorporates the new data without restarting the server.
+
+    Response:
+      { "status": "started",  "message": "..." }
+      { "status": "already_retraining", "message": "..." }
+    """
+    app = current_app._get_current_object()
+    result = retrain_ml_model(app)
     return jsonify(result)

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { searchColors, getRalPantone } from "../api";
+import { searchColors, getRalPantone, submitFeedback } from "../api";
 import { Link } from "react-router-dom";
 
 const POLYMERS = ["PE", "PP", "ABS", "SAN", "OTHER"];
@@ -124,7 +124,351 @@ function getMaterialRole(r) {
   return { type: "—", fn: "—", color: "—", badge: "bg-gray-100 text-gray-400" };
 }
 
-function MLSuggestionCard({ s, rank }) {
+function CorrectionModal({ open, onClose, onSaved, label, suggestion_type, target_lab,
+                           polymer, delta_e, product_id, recipe_snapshot, pigments }) {
+  const [cL, setCL] = useState("");
+  const [cA, setCA] = useState("");
+  const [cB, setCB] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState(null);
+
+  if (!open) return null;
+
+  const handleClose = () => {
+    setCL(""); setCA(""); setCB(""); setNotes(""); setErr(null);
+    onClose();
+  };
+
+  const handleSubmit = async () => {
+    if (!cL || !cA || !cB) {
+      setErr("Please enter all three measured LAB values.");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const body = {
+        suggestion_type, target_lab, polymer, delta_e, notes: notes.trim(),
+        confirmed_L: parseFloat(cL), confirmed_a: parseFloat(cA), confirmed_b: parseFloat(cB),
+      };
+      if (suggestion_type === "recipe") {
+        body.product_id = product_id;
+        if (recipe_snapshot) body.recipe_snapshot = recipe_snapshot;
+      } else {
+        body.pigments = pigments;
+      }
+      await submitFeedback(body);
+      handleClose();
+      onSaved();
+    } catch (e) {
+      setErr(e.response?.data?.error || e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5">
+        <h3 className="font-semibold text-base mb-1">Enter correction</h3>
+        <p className="text-sm text-gray-700 mb-1 font-medium">{label}</p>
+        <p className="text-xs text-gray-400 mb-4">
+          Enter the actual spectrophotometer reading you got after testing.
+          This corrects the system&apos;s prediction so future suggestions are more accurate.
+        </p>
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            Actual measured LAB <span className="text-red-500">*</span>
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {[["L*", cL, setCL], ["a*", cA, setCA], ["b*", cB, setCB]].map(([lbl, val, fn]) => (
+              <div key={lbl}>
+                <label className="text-xs text-gray-400">{lbl}</label>
+                <input
+                  type="number" step="0.01" value={val}
+                  onChange={(e) => fn(e.target.value)}
+                  placeholder="—"
+                  className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+          <input
+            type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
+            placeholder="Batch #, comments…"
+            className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          />
+        </div>
+        {err && <p className="text-red-600 text-xs mb-3">{err}</p>}
+        <div className="flex gap-2">
+          <button
+            onClick={handleSubmit} disabled={saving}
+            className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-1.5 rounded transition disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save correction"}
+          </button>
+          <button onClick={handleClose} className="px-4 py-1.5 text-sm border rounded hover:bg-gray-50 transition">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FeedbackButtons({ suggestion_type, target_lab, polymer, delta_e,
+                           product_id, recipe_snapshot, pigments, label }) {
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const handleConfirm = async () => {
+    setSaving(true);
+    setErr(null);
+    try {
+      const body = { suggestion_type, target_lab, polymer, delta_e };
+      if (suggestion_type === "recipe") {
+        body.product_id = product_id;
+        if (recipe_snapshot) body.recipe_snapshot = recipe_snapshot;
+      } else {
+        body.pigments = pigments;
+      }
+      await submitFeedback(body);
+      setSaved(true);
+    } catch (e) {
+      setErr(e.response?.data?.error || e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (saved) {
+    return (
+      <div className="mt-2 pt-2 border-t text-xs text-green-700 font-medium">
+        ✓ Saved — will be used in next retrain
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="mt-2 pt-2 border-t flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-gray-500">Was this correct?</span>
+        <button
+          onClick={handleConfirm} disabled={saving}
+          className="text-xs font-semibold text-white bg-green-600 hover:bg-green-700 rounded px-3 py-1 transition disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "✓ Yes, correct"}
+        </button>
+        <button
+          onClick={() => setCorrecting(true)}
+          className="text-xs font-medium text-amber-700 border border-amber-300 hover:bg-amber-50 rounded px-3 py-1 transition"
+        >
+          Correction needed
+        </button>
+        {err && <span className="text-xs text-red-600 ml-1">{err}</span>}
+      </div>
+      <CorrectionModal
+        open={correcting}
+        onClose={() => setCorrecting(false)}
+        onSaved={() => setSaved(true)}
+        label={label}
+        suggestion_type={suggestion_type}
+        target_lab={target_lab}
+        polymer={polymer}
+        delta_e={delta_e}
+        product_id={product_id}
+        recipe_snapshot={recipe_snapshot}
+        pigments={pigments}
+      />
+    </>
+  );
+}
+
+function CustomRecipePanel({ targetLab, polymer }) {
+  const [open, setOpen] = useState(false);
+  const [pigments, setPigments] = useState([{ rm_id: "", name: "", percentage: "" }]);
+  const [measuredL, setMeasuredL] = useState("");
+  const [measuredA, setMeasuredA] = useState("");
+  const [measuredB, setMeasuredB] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const addRow = () => setPigments((prev) => [...prev, { rm_id: "", name: "", percentage: "" }]);
+  const removeRow = (i) => setPigments((prev) => prev.filter((_, idx) => idx !== i));
+  const updateRow = (i, field, val) =>
+    setPigments((prev) => prev.map((p, idx) => (idx === i ? { ...p, [field]: val } : p)));
+
+  const handleSubmit = async () => {
+    const valid = pigments.filter((p) => p.rm_id.trim() && parseFloat(p.percentage) > 0);
+    if (!valid.length) {
+      setErr("Add at least one pigment with an RM ID and percentage.");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const body = {
+        suggestion_type: "custom",
+        target_lab: targetLab,
+        polymer,
+        delta_e: 0,
+        pigments: valid.map((p) => ({
+          rm_id: p.rm_id.trim(),
+          name: p.name.trim() || p.rm_id.trim(),
+          percentage: parseFloat(p.percentage),
+        })),
+        notes: notes.trim(),
+      };
+      if (measuredL !== "" && measuredA !== "" && measuredB !== "") {
+        body.confirmed_L = parseFloat(measuredL);
+        body.confirmed_a = parseFloat(measuredA);
+        body.confirmed_b = parseFloat(measuredB);
+      }
+      await submitFeedback(body);
+      setSuccess(true);
+    } catch (e) {
+      setErr(e.response?.data?.error || e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <div className="border-t pt-4 text-center">
+        <button
+          onClick={() => setOpen(true)}
+          className="text-sm text-gray-500 hover:text-indigo-600 underline-offset-2 hover:underline transition"
+        >
+          + None of these suggestions matched? Submit your own recipe
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold text-base">Submit Your Own Recipe</h3>
+        <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+      </div>
+
+      {!success ? (
+        <>
+          <p className="text-sm text-gray-500 mb-4">
+            Enter the pigments / raw materials and percentages that gave you the target colour{" "}
+            <span className="font-mono text-xs bg-gray-100 px-1 rounded">
+              L={targetLab.L} a={targetLab.a} b={targetLab.b}
+            </span>.
+            This will be saved as a new recipe and used in future searches and ML retraining.
+          </p>
+
+          {/* Pigment rows */}
+          <div className="mb-4">
+            <div className="text-xs font-medium text-gray-600 mb-2">Pigments / Raw Materials</div>
+            <div className="space-y-2">
+              {pigments.map((p, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <input
+                    type="text" placeholder="RM ID (e.g. RM302)" value={p.rm_id}
+                    onChange={(e) => updateRow(i, "rm_id", e.target.value)}
+                    className="w-32 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                  <input
+                    type="text" placeholder="Name (optional)" value={p.name}
+                    onChange={(e) => updateRow(i, "name", e.target.value)}
+                    className="flex-1 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number" placeholder="%" step="0.01" min="0" value={p.percentage}
+                      onChange={(e) => updateRow(i, "percentage", e.target.value)}
+                      className="w-20 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                    <span className="text-xs text-gray-400">%</span>
+                  </div>
+                  <button
+                    onClick={() => removeRow(i)}
+                    disabled={pigments.length === 1}
+                    className="text-gray-400 hover:text-red-500 font-bold text-sm disabled:opacity-30"
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+            <button onClick={addRow} className="mt-2 text-xs text-indigo-600 hover:underline">
+              + Add another pigment / material
+            </button>
+          </div>
+
+          {/* Actual measured LAB */}
+          <div className="mb-4">
+            <div className="text-xs font-medium text-gray-600 mb-1">
+              Actual measured LAB{" "}
+              <span className="text-gray-400">(spectrophotometer reading — what colour you actually got)</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {[["L*", measuredL, setMeasuredL], ["a*", measuredA, setMeasuredA], ["b*", measuredB, setMeasuredB]].map(([lbl, val, fn]) => (
+                <div key={lbl}>
+                  <label className="text-xs text-gray-400">{lbl}</label>
+                  <input
+                    type="number" step="0.01" value={val}
+                    onChange={(e) => fn(e.target.value)}
+                    placeholder="—"
+                    className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+            <input
+              type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
+              placeholder="Batch #, customer, observations…"
+              className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+          </div>
+
+          {err && <p className="text-red-600 text-xs mb-3">{err}</p>}
+          <button
+            onClick={handleSubmit} disabled={saving}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2 rounded transition disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save Recipe"}
+          </button>
+        </>
+      ) : (
+        <div className="text-center py-4">
+          <div className="text-green-600 text-3xl mb-2">✓</div>
+          <p className="font-semibold text-gray-800 mb-1">Recipe saved!</p>
+          <p className="text-xs text-gray-500 mb-4">
+            Your recipe is now stored in the database and will appear in future searches.{" "}
+            Run{" "}
+            <span className="font-mono bg-gray-100 px-1 rounded">POST /api/retrain</span>{" "}
+            to update the ML model.
+          </p>
+          <button
+            onClick={() => { setSuccess(false); setPigments([{ rm_id: "", name: "", percentage: "" }]); setMeasuredL(""); setMeasuredA(""); setMeasuredB(""); setNotes(""); setOpen(false); }}
+            className="bg-indigo-600 text-white text-sm font-semibold px-4 py-1.5 rounded"
+          >
+            Done
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MLSuggestionCard({ s, rank, targetLab, polymer }) {
   const nColorants = s.n_colorants;
   const typeLabel =
     nColorants === 1 ? "1 colorant" :
@@ -253,11 +597,27 @@ function MLSuggestionCard({ s, rank }) {
       <div className="text-gray-400 border-t pt-1">
         Avg pigment confidence {s.avg_confidence_pct}%
       </div>
+
+      {/* Feedback */}
+      {targetLab && (
+        <FeedbackButtons
+          suggestion_type="ml"
+          target_lab={targetLab}
+          polymer={polymer}
+          delta_e={s.delta_e ?? s.predicted_delta_e}
+          pigments={(s.pigment_system || []).map((p) => ({
+            rm_id: p.rm_id,
+            name: p.name,
+            percentage: p.pct,
+          }))}
+          label={`ML suggestion: ${(s.pigment_system || []).map((p) => p.name).join(" + ")} in ${polymer || ""}`}
+        />
+      )}
     </div>
   );
 }
 
-function ResultCard({ result, label }) {
+function ResultCard({ result, label, targetLab, polymer }) {
   const [showRecipe, setShowRecipe] = useState(false);
   const lab = result.measured_lab || result.predicted_lab || {};
   return (
@@ -342,11 +702,24 @@ function ResultCard({ result, label }) {
           )}
         </div>
       )}
+
+      {/* Feedback */}
+      {targetLab && (
+        <FeedbackButtons
+          suggestion_type="recipe"
+          target_lab={targetLab}
+          polymer={polymer}
+          delta_e={result.delta_e}
+          product_id={result.product.id}
+          recipe_snapshot={result.recipe}
+          label={`Recipe: ${result.product.id} — ${result.product.name}`}
+        />
+      )}
     </div>
   );
 }
 
-function PigmentSuggestionCard({ s, rank }) {
+function PigmentSuggestionCard({ s, rank, targetLab, polymer }) {
   const nPigments = s.pigments.length;
   const typeLabel =
     nPigments === 1 ? "Single pigment" :
@@ -395,6 +768,22 @@ function PigmentSuggestionCard({ s, rank }) {
       <div className="text-xs text-gray-400 mt-0.5">
         Predicted L={s.predicted_lab.L} a={s.predicted_lab.a} b={s.predicted_lab.b}
       </div>
+
+      {/* Feedback */}
+      {targetLab && (
+        <FeedbackButtons
+          suggestion_type="pigment_km"
+          target_lab={targetLab}
+          polymer={polymer}
+          delta_e={s.delta_e}
+          pigments={s.pigments.map((p) => ({
+            rm_id: p.rm_id,
+            name: p.name,
+            percentage: p.concentration != null ? p.concentration * 100 : p.kg_per_100kg,
+          }))}
+          label={`K-M blend: ${s.pigments.map((p) => p.name).join(" + ")} in ${polymer || ""}`}
+        />
+      )}
     </div>
   );
 }
@@ -589,7 +978,7 @@ export default function ColorSearch() {
             ) : (
               <div className="space-y-3">
                 {results.exact_matches.map((r, i) => (
-                  <ResultCard key={i} result={r} />
+                  <ResultCard key={i} result={r} targetLab={results.target_lab} polymer={results.polymer} />
                 ))}
               </div>
             )}
@@ -604,7 +993,7 @@ export default function ColorSearch() {
               </h2>
               <div className="space-y-3">
                 {results.cross_polymer_suggestions.map((r, i) => (
-                  <ResultCard key={i} result={r} label="Cross-polymer" />
+                  <ResultCard key={i} result={r} label="Cross-polymer" targetLab={results.target_lab} polymer={results.polymer} />
                 ))}
               </div>
             </section>
@@ -620,7 +1009,7 @@ export default function ColorSearch() {
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {results.pigment_suggestions.map((s, i) => (
-                  <PigmentSuggestionCard key={i} s={s} rank={i} />
+                  <PigmentSuggestionCard key={i} s={s} rank={i} targetLab={results.target_lab} polymer={results.polymer} />
                 ))}
               </div>
             </section>
@@ -639,11 +1028,14 @@ export default function ColorSearch() {
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {results.ml_suggestions.map((s, i) => (
-                  <MLSuggestionCard key={i} s={s} rank={i} />
+                  <MLSuggestionCard key={i} s={s} rank={i} targetLab={results.target_lab} polymer={results.polymer} />
                 ))}
               </div>
             </section>
           ) : null}
+
+          {/* Custom recipe submission */}
+          <CustomRecipePanel targetLab={results.target_lab} polymer={results.polymer} />
         </div>
       )}
     </div>

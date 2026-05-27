@@ -1,0 +1,50 @@
+# docker-compose.yml — Surya Masterbatch full stack
+# ─────────────────────────────────────────────────────────────────────────────
+# Services:
+#   backend  — Flask API (port 5000)
+#   frontend — React app served by nginx (port 80), proxies /api/ to backend
+#
+# Usage:
+#   docker compose up --build          # first run (builds images + imports data)
+#   docker compose up -d               # start in background
+#   docker compose down                # stop containers (DB volume is kept)
+#   docker compose down -v             # stop + WIPE database (forces re-import)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: surya_backend
+    environment:
+      DATA_DIR: /data
+      DB_PATH: /db/surya.db
+      SECRET_KEY: ${SECRET_KEY:-surya-masterbatch-change-in-production}
+    volumes:
+      - surya_db:/db          # persist SQLite database across restarts
+    ports:
+      - "5000:5000"           # direct API access (useful for ERP integration)
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/ml-status')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s       # allow time for first-run import + ML training
+
+  frontend:
+    build:
+      context: .
+      dockerfile: app/frontend/Dockerfile
+    container_name: surya_frontend
+    ports:
+      - "80:80"               # open http://localhost in browser
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  surya_db:
+    name: surya_masterbatch_db

@@ -16,7 +16,7 @@ from models.database import (
     RawMaterial, AlphaCode, LabResult
 )
 from services.color_engine import delta_e_cie2000, Pigment, predict_mixture_lab, hex_to_lab
-from services.ml_engine import get_ml_suggestions, get_ml_status
+from services.ml_engine import get_ml_suggestions, get_ml_status, get_km_corrections
 
 
 # Compliance hierarchy (what each level covers)
@@ -268,6 +268,8 @@ def _fallback_recipe_search(
     # Build a quick lookup: rawmaterialid -> RawMaterial (for K-M objects)
     rm_lookup: Dict[str, RawMaterial] = {rm.rawmaterialid: rm for rm in eligible_rms}
 
+    _corrections = get_km_corrections()
+
     def _rm_to_pigment(rm: RawMaterial) -> Optional[Pigment]:
         if rm.full_tone_L is None or rm.tint_tone_L is None:
             return None
@@ -279,6 +281,7 @@ def _fallback_recipe_search(
             tint_L=rm.tint_tone_L,
             tint_a=rm.tint_tone_a if rm.tint_tone_a is not None else 0.0,
             tint_b=rm.tint_tone_b if rm.tint_tone_b is not None else 0.0,
+            ks_corrections=_corrections.get(rm.rawmaterialid, (1.0, 1.0, 1.0)),
         )
 
     # ---- collect candidate product IDs from recipe map --------------------
@@ -651,6 +654,7 @@ def _suggest_pigment_combinations(
     )
 
     # Build Pigment objects — require both full-tone AND tint-tone data for K-M
+    _km_corr = get_km_corrections()
     pig_pool: List[Tuple["RawMaterial", Pigment]] = []
     for rm in eligible_rms:
         if rm.full_tone_L is not None and rm.tint_tone_L is not None:
@@ -662,6 +666,7 @@ def _suggest_pigment_combinations(
                 tint_L=rm.tint_tone_L,
                 tint_a=rm.tint_tone_a if rm.tint_tone_a is not None else 0.0,
                 tint_b=rm.tint_tone_b if rm.tint_tone_b is not None else 0.0,
+                ks_corrections=_km_corr.get(rm.rawmaterialid, (1.0, 1.0, 1.0)),
             )))
 
     if not pig_pool:

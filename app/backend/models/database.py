@@ -280,3 +280,70 @@ class ClientProductMapping(db.Model):
             "premium_disc": self.premium_disc,
             "alphacode": self.alphacode,
         }
+
+
+class FeedbackRecord(db.Model):
+    """
+    Stores user feedback on search suggestions — links a target LAB colour to the
+    recipe / pigment combination that actually worked.  Every confirmed feedback
+    entry creates a LabResult (and, for pigment_km / ml types, a Product + recipe)
+    so it automatically feeds into the next ML retrain.
+
+    suggestion_type:
+      "recipe"     — user confirmed an existing product recipe matched the target
+      "pigment_km" — user confirmed a new K-M pigment combination worked
+      "ml"         — user confirmed an ML-suggested combination worked
+    """
+    __tablename__ = "feedback_record"
+    id = db.Column(Integer, primary_key=True, autoincrement=True)
+    created_at = db.Column(DateTime, default=datetime.utcnow)
+
+    suggestion_type = db.Column(String(20))       # "recipe" | "pigment_km" | "ml"
+    target_L = db.Column(Float)
+    target_a = db.Column(Float)
+    target_b = db.Column(Float)
+    polymer = db.Column(String(20))
+
+    # product_id: for "recipe" type = the existing product;
+    #             for "pigment_km"/"ml" = auto-created FB_ product
+    product_id = db.Column(String(30))
+
+    # JSON snapshot of the suggestion's recipe (list of {rm_id, name, percentage})
+    recipe_snapshot = db.Column(Text)
+
+    # ΔE of the suggestion vs target at the time the feedback was given
+    delta_e_at_submission = db.Column(Float)
+
+    # Optional: measured LAB after actual production — improves future training quality
+    confirmed_L = db.Column(Float)
+    confirmed_a = db.Column(Float)
+    confirmed_b = db.Column(Float)
+    delta_e_confirmed = db.Column(Float)  # ΔE of confirmed measurement vs target
+
+    notes = db.Column(Text)
+    lab_result_id = db.Column(Integer)    # ID of the LabResult row created by this feedback
+
+    def to_dict(self):
+        import json
+        try:
+            recipe = json.loads(self.recipe_snapshot) if self.recipe_snapshot else []
+        except Exception:
+            recipe = []
+        return {
+            "id": self.id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "suggestion_type": self.suggestion_type,
+            "target_lab": {"L": self.target_L, "a": self.target_a, "b": self.target_b},
+            "polymer": self.polymer,
+            "product_id": self.product_id,
+            "recipe_snapshot": recipe,
+            "delta_e_at_submission": self.delta_e_at_submission,
+            "confirmed_lab": {
+                "L": self.confirmed_L,
+                "a": self.confirmed_a,
+                "b": self.confirmed_b,
+            } if self.confirmed_L is not None else None,
+            "delta_e_confirmed": self.delta_e_confirmed,
+            "notes": self.notes,
+            "lab_result_id": self.lab_result_id,
+        }

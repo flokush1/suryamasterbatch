@@ -17,7 +17,9 @@ from models.database import (
     AlphaCode, RalPantoneShade, Stock, LabResult, ClientProductMapping
 )
 
-DATA_DIR = BASE_DIR  # CSVs are in the root workspace folder
+# DATA_DIR env var overrides the default — used in Docker where data files
+# are copied to /data/ rather than the workspace root.
+DATA_DIR = os.environ.get("DATA_DIR", BASE_DIR)
 
 
 def safe_float(val):
