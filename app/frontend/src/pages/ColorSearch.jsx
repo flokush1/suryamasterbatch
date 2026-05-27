@@ -761,6 +761,13 @@ function PigmentSuggestionCard({ s, rank, targetLab, polymer }) {
               </td>
             </tr>
           ))}
+          {s.carrier_kg > 0 && (
+            <tr className="border-t border-gray-200 bg-gray-50">
+              <td className="py-0.5 text-gray-500 pr-2 italic">{s.carrier_label || "Base resin"}</td>
+              <td className="py-0.5 text-right text-gray-400">{s.carrier_kg.toFixed(2)}%</td>
+              <td className="py-0.5 text-right text-gray-500 font-semibold">{s.carrier_kg.toFixed(2)}</td>
+            </tr>
+          )}
         </tbody>
       </table>
 

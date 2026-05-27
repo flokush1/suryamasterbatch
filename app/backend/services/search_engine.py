@@ -585,7 +585,7 @@ def search_recipes(
     # Step 4: K-M pigment combination suggestions
     # -----------------------------------------------------------------------
     pigment_suggestions = _suggest_pigment_combinations(
-        target, compliance,
+        target, polymer, compliance,
         light_fastness=light_fastness,
         weather_fastness=weather_fastness,
         heat_stability=effective_heat,
@@ -620,6 +620,7 @@ def search_recipes(
 
 def _suggest_pigment_combinations(
     target: Tuple[float, float, float],
+    polymer: str,
     compliance: Optional[str],
     light_fastness: Optional[float] = None,
     weather_fastness: Optional[float] = None,
@@ -721,9 +722,13 @@ def _suggest_pigment_combinations(
         }
 
     def _make_result(entries: List[Dict], pred: Tuple, de: float, rtype: str) -> Dict:
+        total_pig_kg = sum(e["kg_per_100kg"] for e in entries)
+        carrier_kg = round(max(0.0, 100.0 - total_pig_kg), 2)
         return {
             "type": rtype,
             "pigments": entries,
+            "carrier_kg": carrier_kg,
+            "carrier_label": f"{polymer} base resin",
             "predicted_lab": {
                 "L": round(pred[0], 2),
                 "a": round(pred[1], 2),
