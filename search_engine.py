@@ -946,6 +946,76 @@ def _suggest_pigment_combinations(
     return all_results[: top_n * 3]
 
 
+def _two_stage_suggest(
+    target: Tuple[float, float, float],
+    polymer: str,
+    compliance: Optional[str],
+    light_fastness: Optional[float] = None,
+    weather_fastness: Optional[float] = None,
+    heat_stability: Optional[float] = None,
+    top_n: int = 5,
+    fast_mode: bool = False,
+) -> List[Dict]:
+    """
+    Two-stage pigment suggestion pipeline.
+
+    Stage 1 (always): heuristic grid search — fast, coarse, produces seeds.
+    Stage 2 (unless fast_mode=True): continuous Powell optimisation using
+      scipy.minimize to refine concentrations beyond what the fixed grid can
+      reach, seeded by Stage 1 results.
+
+    Both stages use an identical candidate pool, the same K-M predictor, and
+    the same ΔE CIE2000 objective — so any improvement in ΔE reflects a better
+    search strategy, not different physics.
+
+    When fast_mode=True only Stage 1 runs (suitable for real-time UI previews).
+    The full two-stage pipeline is used for final recipe recommendations.
+    """
+    # Stage 1: heuristic (always)
+    heuristic_results = _suggest_pigment_combinations(
+        target, polymer, compliance,
+        light_fastness=light_fastness,
+        weather_fastness=weather_fastness,
+        heat_stability=heat_stability,
+        top_n=top_n,
+    )
+
+    if fast_mode:
+        return heuristic_results
+
+    # Build the same top-15 candidate pool used internally by the heuristic
+    eligible_rms = get_eligible_pigments(
+        compliance=compliance,
+        light_fastness=light_fastness,
+        weather_fastness=weather_fastness,
+        heat_stability=heat_stability,
+    )
+    km_pool = _build_km_pigment_pool(eligible_rms)
+    if not km_pool:
+        return heuristic_results
+
+    km_pool.sort(key=lambda item: _score_pigment_against_target(target, item[0]))
+    candidates = km_pool[:15]
+
+    # Stage 2: continuous optimisation seeded by heuristic results
+    optimized = _continuous_optimize_blends(
+        target=target,
+        candidates=candidates,
+        heuristic_seeds=heuristic_results,
+        top_n=top_n,
+        max_colorants=3,
+    )
+
+    if not optimized:
+        return heuristic_results
+
+    carrier_label = f"{polymer} base resin"
+    for r in optimized:
+        r["carrier_label"] = carrier_label
+
+    return optimized
+
+
 def _normalized_signature(indices: Tuple[int, ...], concs: np.ndarray) -> Tuple:
     rounded = [round(float(v), 4) for v in concs]
     pairs = sorted(zip(indices, rounded), key=lambda x: x[0])
@@ -1093,74 +1163,129 @@ def _continuous_optimize_blends(
     return [result for _, result in scored[:top_n]]
 
 
-def _two_stage_suggest(
-    target: Tuple[float, float, float],
+def compare_blend_strategies(
+    target_L: float,
+    target_a: float,
+    target_b: float,
     polymer: str,
-    compliance: Optional[str],
+    compliance: Optional[str] = None,
     light_fastness: Optional[float] = None,
     weather_fastness: Optional[float] = None,
     heat_stability: Optional[float] = None,
     top_n: int = 5,
-    fast_mode: bool = False,
-) -> List[Dict]:
-    """
-    Two-stage pigment suggestion pipeline.
-
-    Stage 1 (always): heuristic grid search — fast, coarse, produces seeds.
-    Stage 2 (unless fast_mode=True): continuous Powell optimisation using
-      scipy.minimize to refine concentrations beyond what the fixed grid can
-      reach, seeded by Stage 1 results.
-
-    Both stages use an identical candidate pool, the same K-M predictor, and
-    the same ΔE CIE2000 objective — so any improvement in ΔE reflects a better
-    search strategy, not different physics.
-
-    When fast_mode=True only Stage 1 runs (suitable for real-time UI previews).
-    The full two-stage pipeline is used for final recipe recommendations.
-    """
-    # Stage 1: heuristic (always)
-    heuristic_results = _suggest_pigment_combinations(
-        target, polymer, compliance,
-        light_fastness=light_fastness,
-        weather_fastness=weather_fastness,
-        heat_stability=heat_stability,
-        top_n=top_n,
-    )
-
-    if fast_mode:
-        return heuristic_results
-
-    # Build the same top-15 candidate pool used internally by the heuristic
-    eligible_rms = get_eligible_pigments(
+) -> Dict:
+    target = (target_L, target_a, target_b)
+    effective_heat = heat_stability if heat_stability is not None else 200.0
+    eligible = get_eligible_pigments(
         compliance=compliance,
         light_fastness=light_fastness,
         weather_fastness=weather_fastness,
-        heat_stability=heat_stability,
+        heat_stability=effective_heat,
     )
-    km_pool = _build_km_pigment_pool(eligible_rms)
-    if not km_pool:
-        return heuristic_results
-
+    km_pool = _build_km_pigment_pool(eligible)
     km_pool.sort(key=lambda item: _score_pigment_against_target(target, item[0]))
     candidates = km_pool[:15]
 
-    # Stage 2: continuous optimisation seeded by heuristic results
+    # Both heuristic and optimizer now produce the same rich schema via
+    # _blend_result_from_components, so no schema normalisation is needed.
+    heuristic = _suggest_pigment_combinations(
+        target=target,
+        polymer=polymer,
+        compliance=compliance,
+        light_fastness=light_fastness,
+        weather_fastness=weather_fastness,
+        heat_stability=effective_heat,
+        top_n=top_n,
+    )
     optimized = _continuous_optimize_blends(
         target=target,
         candidates=candidates,
-        heuristic_seeds=heuristic_results,
+        heuristic_seeds=heuristic,
         top_n=top_n,
         max_colorants=3,
     )
 
-    if not optimized:
-        return heuristic_results
+    heuristic_best = heuristic[0] if heuristic else None
+    optimized_best = optimized[0] if optimized else None
+    comparison = {
+        "target_lab": {"L": target_L, "a": target_a, "b": target_b},
+        "polymer": polymer.upper(),
+        "candidate_pigments": [
+            {
+                "rawmaterialid": rm.rawmaterialid,
+                "name": rm.rawmaterialname,
+                "ci_name": rm.ci_name,
+                "score_delta_e": round(_score_pigment_against_target(target, rm), 4),
+                "full_tone_lab": {
+                    "L": rm.full_tone_L,
+                    "a": rm.full_tone_a if rm.full_tone_a is not None else 0.0,
+                    "b": rm.full_tone_b if rm.full_tone_b is not None else 0.0,
+                },
+                "tint_tone_lab": {
+                    "L": rm.tint_tone_L,
+                    "a": rm.tint_tone_a if rm.tint_tone_a is not None else 0.0,
+                    "b": rm.tint_tone_b if rm.tint_tone_b is not None else 0.0,
+                } if rm.tint_tone_L is not None else None,
+            }
+            for rm, _ in candidates
+        ],
+        "current_code": {
+            "algorithm": "heuristic_grid_search",
+            "best": heuristic_best,
+            "alternatives": heuristic[:top_n],
+        },
+        "optimized": {
+            "algorithm": "continuous_pattern_search",
+            "best": optimized_best,
+            "alternatives": optimized,
+        },
+    }
+    if heuristic_best and optimized_best:
+        comparison["summary"] = {
+            "heuristic_delta_e": heuristic_best["delta_e"],
+            "optimized_delta_e": optimized_best["delta_e"],
+            "delta_e_improvement": round(heuristic_best["delta_e"] - optimized_best["delta_e"], 4),
+            "improvement_pct": round(
+                ((heuristic_best["delta_e"] - optimized_best["delta_e"]) / heuristic_best["delta_e"]) * 100.0,
+                2,
+            ) if heuristic_best["delta_e"] else None,
+        }
+    else:
+        comparison["summary"] = None
+    return comparison
 
-    carrier_label = f"{polymer} base resin"
-    for r in optimized:
-        r["carrier_label"] = carrier_label
 
-    return optimized
+def get_random_target_pigment(
+    polymer: str,
+    compliance: Optional[str] = None,
+    light_fastness: Optional[float] = None,
+    weather_fastness: Optional[float] = None,
+    heat_stability: Optional[float] = None,
+    seed: Optional[int] = None,
+) -> Optional[Dict]:
+    effective_heat = heat_stability if heat_stability is not None else 200.0
+    eligible = get_eligible_pigments(
+        compliance=compliance,
+        light_fastness=light_fastness,
+        weather_fastness=weather_fastness,
+        heat_stability=effective_heat,
+    )
+    pool = [rm for rm in eligible if rm.full_tone_L is not None]
+    if not pool:
+        return None
+    rng = random.Random(seed)
+    rm = rng.choice(pool)
+    return {
+        "polymer": polymer.upper(),
+        "rawmaterialid": rm.rawmaterialid,
+        "name": rm.rawmaterialname,
+        "ci_name": rm.ci_name,
+        "target_lab": {
+            "L": rm.full_tone_L,
+            "a": rm.full_tone_a if rm.full_tone_a is not None else 0.0,
+            "b": rm.full_tone_b if rm.full_tone_b is not None else 0.0,
+        },
+    }
 
 
 def get_product_cost_estimate(product_id: str) -> Optional[Dict]:

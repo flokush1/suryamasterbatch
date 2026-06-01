@@ -50,6 +50,7 @@ def color_search():
         weather_fastness=float(data["weather_fastness"]) if data.get("weather_fastness") else None,
         heat_stability=float(data["heat_stability"]) if data.get("heat_stability") else None,
         ral_pantone=data.get("ral_pantone"),
+        fast_mode=bool(data.get("fast_mode", False)),
         top_n=int(data.get("top_n", 10)),
     )
     return jsonify(results)
