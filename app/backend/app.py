@@ -36,6 +36,37 @@ def create_app():
     from services.ml_engine import init_ml_model
     init_ml_model(app)
 
+    # ── Frontend Serving ──────────────────────────────────────────────────
+    from flask import send_from_directory
+    dist_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../frontend/dist"))
+
+    if os.path.exists(dist_path):
+        # Specific files in root
+        @app.route("/favicon.svg")
+        def favicon():
+            return send_from_directory(dist_path, "favicon.svg")
+
+        @app.route("/icons.svg")
+        def icons():
+            return send_from_directory(dist_path, "icons.svg")
+
+        # SPA Catch-all and static asset serving
+        @app.route("/", defaults={"path": ""})
+        @app.route("/<path:path>")
+        def serve_spa(path):
+            if path.startswith("api/"):
+                return {"detail": "Not Found"}, 404
+            
+            full_path = os.path.join(dist_path, path)
+            if path and os.path.isfile(full_path):
+                return send_from_directory(dist_path, path)
+            
+            return send_from_directory(dist_path, "index.html")
+    else:
+        @app.route("/")
+        def index():
+            return {"message": "Backend is running. Frontend build (dist) not found."}
+
     return app
 
 
