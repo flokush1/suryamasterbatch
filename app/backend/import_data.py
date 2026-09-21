@@ -309,10 +309,12 @@ def import_alpha_codes():
 
 def import_ral_pantone():
     print("Importing ral_pantone_shade.csv ...")
+    from services.color_engine import hex_to_lab
     path = os.path.join(DATA_DIR, "ral_pantone_shade.csv")
     with open(path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         count = 0
+        std_count = 0
         for row in reader:
             code = row.get("shade_code", "").strip()
             if not code:
@@ -320,12 +322,26 @@ def import_ral_pantone():
             shade = RalPantoneShade.query.get(code)
             if shade is None:
                 shade = RalPantoneShade(shade_code=code)
-            shade.color_name = row.get("color_name", "").strip()
-            shade.hex_code = row.get("hex_code", "").strip()
+            shade.color_name = row.get("color_name", "").strip() or None
+            shade.hex_code = row.get("hex_code", "").strip() or None
+            L = safe_float(row.get("L"))
+            a = safe_float(row.get("a"))
+            b = safe_float(row.get("b"))
+            source = (row.get("lab_source") or "").strip().lower() or None
+            if L is not None and a is not None and b is not None:
+                shade.L, shade.a, shade.b = L, a, b
+                shade.lab_source = source or "std"
+                if shade.lab_source == "std":
+                    std_count += 1
+            else:
+                lab = hex_to_lab(shade.hex_code) if shade.hex_code else None
+                if lab:
+                    shade.L, shade.a, shade.b = lab
+                    shade.lab_source = source or "hex"
             db.session.merge(shade)
             count += 1
     db.session.commit()
-    print(f"  → {count} RAL/Pantone shades imported.")
+    print(f"  -> {count} RAL/Pantone shades imported ({std_count} with official STD LAB).")
 
 
 def import_stocks():

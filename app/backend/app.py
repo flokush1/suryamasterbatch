@@ -19,6 +19,13 @@ def create_app():
     db.init_app(app)
     CORS(app)
 
+    with app.app_context():
+        db.create_all()
+        from models.database import ensure_schema
+        ensure_schema()
+        from services.ral_pantone import backfill_shade_lab
+        backfill_shade_lab()
+
     # Register blueprints
     from routes.search import search_bp
     from routes.products import products_bp

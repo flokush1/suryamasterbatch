@@ -1,9 +1,17 @@
 from flask import Blueprint, request, jsonify, current_app
 from services.search_engine import search_recipes, get_eligible_pigments, get_product_cost_estimate
 from services.ml_engine import get_ml_status, retrain_ml_model
+from services.ral_pantone import resolve_shade
 from models.database import RalPantoneShade
 
 search_bp = Blueprint("search", __name__)
+
+
+def _optional_float(data, key):
+    val = data.get(key)
+    if val is None or val == "":
+        return None
+    return float(val)
 
 
 @search_bp.route("/api/search", methods=["POST"])
@@ -12,7 +20,7 @@ def color_search():
     POST /api/search
     Body:
     {
-      "target_L": 50.0,
+      "target_L": 50.0,               // optional if ral_pantone is set
       "target_a": 25.0,
       "target_b": 10.0,
       "polymer": "PE",
@@ -22,7 +30,7 @@ def color_search():
       "light_fastness": 6,             // optional minimum
       "weather_fastness": 4,           // optional minimum
       "heat_stability": 200,           // optional minimum °C
-      "ral_pantone": "RAL 3020",       // optional
+      "ral_pantone": "RAL 3020",       // optional; used as target LAB if L*a*b* omitted
       "top_n": 10                      // optional
     }
     """
@@ -31,12 +39,19 @@ def color_search():
         return jsonify({"error": "Request body required"}), 400
 
     try:
-        target_L = float(data["target_L"])
-        target_a = float(data["target_a"])
-        target_b = float(data["target_b"])
         polymer = str(data["polymer"]).upper()
+        target_L = _optional_float(data, "target_L")
+        target_a = _optional_float(data, "target_a")
+        target_b = _optional_float(data, "target_b")
     except (KeyError, ValueError, TypeError) as e:
         return jsonify({"error": f"Missing or invalid required fields: {e}"}), 400
+
+    ral_pantone = (data.get("ral_pantone") or "").strip() or None
+    has_lab = all(v is not None for v in (target_L, target_a, target_b))
+    if not has_lab and not ral_pantone:
+        return jsonify({
+            "error": "Provide target L*, a*, b* or a RAL/Pantone code"
+        }), 400
 
     results = search_recipes(
         target_L=target_L,
@@ -49,9 +64,12 @@ def color_search():
         light_fastness=float(data["light_fastness"]) if data.get("light_fastness") else None,
         weather_fastness=float(data["weather_fastness"]) if data.get("weather_fastness") else None,
         heat_stability=float(data["heat_stability"]) if data.get("heat_stability") else None,
-        ral_pantone=data.get("ral_pantone"),
+        ral_pantone=ral_pantone,
         top_n=int(data.get("top_n", 10)),
     )
+    if results.get("error"):
+        status = 404 if ral_pantone and not has_lab else 400
+        return jsonify(results), status
     return jsonify(results)
 
 
@@ -71,7 +89,17 @@ def list_pigments():
 
 @search_bp.route("/api/ral-pantone", methods=["GET"])
 def list_ral_pantone():
-    """GET /api/ral-pantone?q=red"""
+    """
+    GET /api/ral-pantone?q=red          — search list
+    GET /api/ral-pantone?code=RAL 3020  — resolve one code to LAB
+    """
+    code = request.args.get("code", "").strip()
+    if code:
+        shade = resolve_shade(code)
+        if shade is None:
+            return jsonify({"error": f"Unknown RAL/Pantone code: {code}"}), 404
+        return jsonify(shade)
+
     q = request.args.get("q", "").strip()
     query = RalPantoneShade.query
     if q:
@@ -80,7 +108,11 @@ def list_ral_pantone():
             RalPantoneShade.shade_code.ilike(f"%{q}%")
         )
     results = query.limit(100).all()
-    return jsonify([r.to_dict() for r in results])
+    payload = [r.to_dict() for r in results]
+    resolved = resolve_shade(q) if q else None
+    if resolved and resolved["shade_code"] not in {p["shade_code"] for p in payload}:
+        payload.insert(0, resolved)
+    return jsonify(payload)
 
 
 @search_bp.route("/api/cost/<product_id>", methods=["GET"])

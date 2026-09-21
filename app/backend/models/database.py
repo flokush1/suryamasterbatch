@@ -204,16 +204,54 @@ class AlphaCode(db.Model):
 
 class RalPantoneShade(db.Model):
     __tablename__ = "ral_pantone_shade"
-    shade_code = db.Column(String(30), primary_key=True)
+    shade_code = db.Column(String(60), primary_key=True)
     color_name = db.Column(String(100))
     hex_code = db.Column(String(10))
+    # Official spectrophotometer LAB when lab_source="std";
+    # hex-derived sRGB approximation when lab_source="hex".
+    L = db.Column(Float)
+    a = db.Column(Float)
+    b = db.Column(Float)
+    lab_source = db.Column(String(20))  # "std" | "hex"
 
     def to_dict(self):
+        lab = None
+        if self.L is not None and self.a is not None and self.b is not None:
+            lab = {
+                "L": round(self.L, 2),
+                "a": round(self.a, 2),
+                "b": round(self.b, 2),
+            }
         return {
             "shade_code": self.shade_code,
             "color_name": self.color_name,
             "hex_code": self.hex_code,
+            "lab": lab,
+            "lab_source": self.lab_source,
         }
+
+
+def ensure_schema():
+    """Add columns that create_all() will not add to an existing SQLite DB."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(db.engine)
+    if "ral_pantone_shade" not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns("ral_pantone_shade")}
+    statements = []
+    if "L" not in existing:
+        statements.append("ALTER TABLE ral_pantone_shade ADD COLUMN L FLOAT")
+    if "a" not in existing:
+        statements.append("ALTER TABLE ral_pantone_shade ADD COLUMN a FLOAT")
+    if "b" not in existing:
+        statements.append("ALTER TABLE ral_pantone_shade ADD COLUMN b FLOAT")
+    if "lab_source" not in existing:
+        statements.append("ALTER TABLE ral_pantone_shade ADD COLUMN lab_source VARCHAR(20)")
+    if not statements:
+        return
+    with db.engine.begin() as conn:
+        for sql in statements:
+            conn.execute(text(sql))
 
 
 class Stock(db.Model):

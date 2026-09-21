@@ -77,7 +77,7 @@ def check_csv():
         "lab_results.csv":          ["product_id", "polymer", "L", "a", "b"],
         "stocks.csv":               ["rawmaterialid"],
         "alphacode.csv":            ["alpha_code", "product_code"],
-        "ral_pantone_shade.csv":    ["shade_code", "color_name"],
+        "ral_pantone_shade.csv":    ["shade_code", "color_name", "hex_code"],
     }
 
     csv_data = {}

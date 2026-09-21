@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { searchColors, getRalPantone, submitFeedback } from "../api";
 import { Link } from "react-router-dom";
 
@@ -807,18 +807,44 @@ export default function ColorSearch() {
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [shadeHints, setShadeHints] = useState([]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  useEffect(() => {
+    const q = form.ral_pantone.trim();
+    if (q.length < 2) {
+      setShadeHints([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await getRalPantone({ q });
+        setShadeHints(Array.isArray(data) ? data.slice(0, 8) : []);
+      } catch {
+        setShadeHints([]);
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [form.ral_pantone]);
+
+  const pickShade = (shade) => {
+    setForm((f) => ({ ...f, ral_pantone: shade.shade_code }));
+    setShadeHints([]);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const hasLab = form.target_L !== "" && form.target_a !== "" && form.target_b !== "";
+    const hasCode = form.ral_pantone.trim() !== "";
+    if (!hasLab && !hasCode) {
+      setError("Enter L*a*b* values or a RAL/Pantone code");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       const payload = {
-        target_L: parseFloat(form.target_L),
-        target_a: parseFloat(form.target_a),
-        target_b: parseFloat(form.target_b),
         polymer: form.polymer,
         application: form.application !== "N.A." ? form.application : undefined,
         sub_application: form.sub_application !== "N.A." ? form.sub_application : undefined,
@@ -826,9 +852,14 @@ export default function ColorSearch() {
         light_fastness: form.light_fastness ? parseFloat(form.light_fastness) : undefined,
         weather_fastness: form.weather_fastness ? parseFloat(form.weather_fastness) : undefined,
         heat_stability: form.heat_stability ? parseFloat(form.heat_stability) : undefined,
-        ral_pantone: form.ral_pantone || undefined,
+        ral_pantone: hasCode ? form.ral_pantone.trim() : undefined,
         top_n: 10,
       };
+      if (hasLab) {
+        payload.target_L = parseFloat(form.target_L);
+        payload.target_a = parseFloat(form.target_a);
+        payload.target_b = parseFloat(form.target_b);
+      }
       const { data } = await searchColors(payload);
       setResults(data);
     } catch (err) {
@@ -848,13 +879,11 @@ export default function ColorSearch() {
           {["target_L", "target_a", "target_b"].map((k) => (
             <div key={k}>
               <label className="block text-xs font-medium text-gray-600 mb-1">
-                {k === "target_L" ? "L*" : k === "target_a" ? "a*" : "b*"}{" "}
-                <span className="text-red-500">*</span>
+                {k === "target_L" ? "L*" : k === "target_a" ? "a*" : "b*"}
               </label>
               <input
                 type="number"
                 step="0.01"
-                required
                 value={form[k]}
                 onChange={(e) => set(k, e.target.value)}
                 placeholder={k === "target_L" ? "0–100" : "-128–127"}
@@ -917,12 +946,35 @@ export default function ColorSearch() {
               placeholder="200"
               className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">RAL / Pantone ref.</label>
+          <div className="relative">
+            <label className="block text-xs font-medium text-gray-600 mb-1">RAL / Pantone</label>
             <input type="text" value={form.ral_pantone}
               onChange={(e) => set("ral_pantone", e.target.value)}
-              placeholder="RAL 3020 or 199 C"
+              placeholder="RAL 3020 or 623 C"
+              autoComplete="off"
               className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            {shadeHints.length > 0 && (
+              <ul className="absolute z-20 mt-1 w-full bg-white border rounded shadow max-h-56 overflow-auto text-sm">
+                {shadeHints.map((s) => (
+                  <li key={s.shade_code}>
+                    <button
+                      type="button"
+                      onClick={() => pickShade(s)}
+                      className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 flex items-center gap-2"
+                    >
+                      {s.hex_code && (
+                        <span
+                          className="w-3.5 h-3.5 rounded border border-gray-300 flex-shrink-0"
+                          style={{ backgroundColor: s.hex_code }}
+                        />
+                      )}
+                      <span className="font-medium">{s.shade_code}</span>
+                      {s.color_name && <span className="text-gray-500 truncate">{s.color_name}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
 
@@ -950,6 +1002,13 @@ export default function ColorSearch() {
               <div className="font-semibold">Target Color</div>
               <div className="text-sm text-gray-500">
                 L={results.target_lab.L} a={results.target_lab.a} b={results.target_lab.b} &nbsp;|&nbsp; Polymer: {results.polymer}
+                {results.target_source && (
+                  <span className="ml-2 text-xs uppercase tracking-wide text-gray-400">
+                    {results.target_source === "std" ? "official STD LAB" :
+                     results.target_source === "hex" ? "from hex (approx.)" :
+                     results.target_source}
+                  </span>
+                )}
               </div>
             </div>
             {results.reference_color && (
@@ -967,6 +1026,8 @@ export default function ColorSearch() {
                   {results.reference_color.lab && (
                     <div className="text-xs text-gray-400">
                       Ref L={results.reference_color.lab.L} a={results.reference_color.lab.a} b={results.reference_color.lab.b}
+                      {results.reference_color.lab_source === "std" && " · official STD"}
+                      {results.reference_color.lab_source === "hex" && " · from hex"}
                     </div>
                   )}
                 </div>

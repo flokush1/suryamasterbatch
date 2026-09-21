@@ -15,8 +15,9 @@ from models.database import (
     db, Product, ProductSpec, ProductRawMaterialMap,
     RawMaterial, AlphaCode, LabResult
 )
-from services.color_engine import delta_e_cie2000, Pigment, predict_mixture_lab, hex_to_lab
+from services.color_engine import delta_e_cie2000, Pigment, predict_mixture_lab
 from services.ml_engine import get_ml_suggestions, get_ml_status, get_km_corrections
+from services.ral_pantone import resolve_shade
 
 
 # Compliance hierarchy (what each level covers)
@@ -453,10 +454,10 @@ def _color_name_product_search(
 
 
 def search_recipes(
-    target_L: float,
-    target_a: float,
-    target_b: float,
-    polymer: str,
+    target_L: Optional[float] = None,
+    target_a: Optional[float] = None,
+    target_b: Optional[float] = None,
+    polymer: str = "",
     application: Optional[str] = None,
     sub_application: Optional[str] = None,
     compliance: Optional[str] = None,
@@ -474,28 +475,31 @@ def search_recipes(
       - pigment_suggestions: KM-based pigment combination suggestions
       - eligible_pigments: list of eligible pigments for manual mixing
     """
-    target = (target_L, target_a, target_b)
-
     # Apply project default: heat stability minimum 200°C (standard PE processing)
     effective_heat = heat_stability if heat_stability is not None else 200.0
 
     # -----------------------------------------------------------------------
-    # RAL/Pantone reference resolution
+    # RAL/Pantone resolution — stored STD LAB, else hex-derived LAB
     # -----------------------------------------------------------------------
-    from models.database import RalPantoneShade
     reference_color = None
     if ral_pantone:
-        shade = RalPantoneShade.query.filter(
-            RalPantoneShade.shade_code.ilike(ral_pantone.strip())
-        ).first()
-        if shade:
-            lab = hex_to_lab(shade.hex_code) if shade.hex_code else None
-            reference_color = {
-                "shade_code": shade.shade_code,
-                "color_name": shade.color_name,
-                "hex_code": shade.hex_code,
-                "lab": {"L": round(lab[0], 2), "a": round(lab[1], 2), "b": round(lab[2], 2)} if lab else None,
-            }
+        reference_color = resolve_shade(ral_pantone)
+
+    has_explicit_lab = all(v is not None for v in (target_L, target_a, target_b))
+    if has_explicit_lab:
+        target = (float(target_L), float(target_a), float(target_b))
+    elif reference_color and reference_color.get("lab"):
+        lab = reference_color["lab"]
+        target = (lab["L"], lab["a"], lab["b"])
+    else:
+        missing = (
+            "Unknown RAL/Pantone code"
+            if ral_pantone
+            else "Provide target L*a*b* or a RAL/Pantone code"
+        )
+        return {"error": missing, "reference_color": reference_color}
+
+    target_L, target_a, target_b = target
 
     # -----------------------------------------------------------------------
     # Step 1: Fetch all products that have spectrophotometer LAB results
@@ -603,8 +607,13 @@ def search_recipes(
     )
     ml_status = get_ml_status()
 
+    target_source = (
+        "measured" if has_explicit_lab
+        else (reference_color.get("lab_source") if reference_color else None)
+    )
     return {
-        "target_lab": {"L": target_L, "a": target_a, "b": target_b},
+        "target_lab": {"L": round(target_L, 2), "a": round(target_a, 2), "b": round(target_b, 2)},
+        "target_source": target_source,
         "polymer": polymer.upper(),
         "reference_color": reference_color,
         "exact_matches": exact_matches[:top_n],
